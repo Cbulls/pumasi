@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="responseMapper">
+
+    <!-- 1인 1회: (form_id, respondent_id) UNIQUE 위반 시 DuplicateKeyException -->
+    <insert id="insertResponse" parameterType="map">
+        INSERT INTO survey_response(id, form_id, respondent_id, quality_flag, elapsed_seconds)
+        VALUES (#{responseId}, #{formId}, #{respondentId}, #{qualityFlag}, #{elapsedSeconds})
+    </insert>
+
+    <insert id="insertAnswer" parameterType="map">
+        INSERT INTO survey_answer(response_id, question_id, value)
+        VALUES (#{responseId}, #{questionId}, #{value})
+    </insert>
+
+</mapper>

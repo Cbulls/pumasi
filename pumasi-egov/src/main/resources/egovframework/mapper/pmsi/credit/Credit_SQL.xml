@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="creditMapper">
+
+    <resultMap id="balanceMap" type="egovframework.pmsi.credit.service.CreditBalanceVO">
+        <id     property="userId"    column="user_id"/>
+        <result property="available" column="available"/>
+        <result property="escrow"    column="escrow"/>
+        <result property="version"   column="version"/>
+    </resultMap>
+
+    <!-- 비관적 락: 행을 잠그고 조회(핫 계정 직렬화) -->
+    <select id="selectForUpdate" parameterType="string" resultMap="balanceMap">
+        SELECT user_id, available, escrow, version
+          FROM credit_balance
+         WHERE user_id = #{userId}
+        FOR UPDATE
+    </select>
+
+    <select id="selectBalance" parameterType="string" resultMap="balanceMap">
+        SELECT user_id, available, escrow, version
+          FROM credit_balance
+         WHERE user_id = #{userId}
+    </select>
+
+    <!-- available → escrow 이동(예치). available &lt; 0 은 CHECK 제약이 방어 -->
+    <update id="moveToEscrow" parameterType="map">
+        UPDATE credit_balance
+           SET available = available - #{amount},
+               escrow    = escrow + #{amount},
+               version   = version + 1
+         WHERE user_id = #{userId}
+    </update>
+
+    <!-- escrow 차감(응답 확정 시 소진) -->
+    <update id="debitEscrow" parameterType="map">
+        UPDATE credit_balance
+           SET escrow  = escrow - #{amount},
+               version = version + 1
+         WHERE user_id = #{userId}
+    </update>
+
+    <!-- available 증가(적립). 잔액 행이 없으면 생성(UPSERT). -->
+    <update id="creditAvailable" parameterType="map">
+        INSERT INTO credit_balance(user_id, available, escrow, version)
+        VALUES (#{userId}, #{amount}, 0, 0)
+        ON CONFLICT (user_id)
+        DO UPDATE SET available = credit_balance.available + EXCLUDED.available,
+                      version   = credit_balance.version + 1
+    </update>
+
+    <select id="ledgerExists" parameterType="map" resultType="int">
+        SELECT COUNT(1)
+          FROM credit_ledger
+         WHERE reason = #{reason}
+           AND ref_id = #{refId}
+    </select>
+
+    <!-- append-only 원장. (reason, ref_id) UNIQUE 위반 = 중복 정산 차단 -->
+    <insert id="insertLedger" parameterType="map">
+        INSERT INTO credit_ledger(user_id, delta, reason, ref_id, coeff_version)
+        VALUES (#{userId}, #{delta}, #{reason}, #{refId}, 1)
+    </insert>
+
+</mapper>

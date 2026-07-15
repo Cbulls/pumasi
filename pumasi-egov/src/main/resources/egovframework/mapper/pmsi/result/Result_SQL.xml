@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="resultMapper">
+
+    <!-- 집계는 pass만: quality_flag = 'pass' 인 응답의 답변만 조회 -->
+    <select id="selectPassAnswers" parameterType="string"
+            resultType="egovframework.pmsi.result.service.impl.AnswerRow">
+        SELECT a.response_id AS response_id,
+               a.question_id AS question_id,
+               a.value       AS value
+          FROM survey_response r
+          JOIN survey_answer a ON a.response_id = r.id
+         WHERE r.form_id = #{formId}
+           AND r.quality_flag = 'pass'
+    </select>
+
+</mapper>

@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="formMapper">
+
+    <resultMap id="formMap" type="egovframework.pmsi.form.service.FormVO">
+        <id     property="formId"       column="id"/>
+        <result property="ownerId"      column="owner_id"/>
+        <result property="title"        column="title"/>
+        <result property="description"  column="description"/>
+        <result property="status"       column="status"/>
+        <result property="costCredits"  column="cost_credits"/>
+        <result property="maxResponses" column="max_responses"/>
+    </resultMap>
+
+    <resultMap id="questionMap" type="egovframework.pmsi.form.service.QuestionVO">
+        <id     property="questionId" column="id"/>
+        <result property="sectionId"  column="section_id"/>
+        <result property="formId"     column="form_id"/>
+        <result property="type"       column="type"/>
+        <result property="title"      column="title"/>
+        <result property="required"   column="required"/>
+        <result property="orderIndex" column="order_index"/>
+        <result property="minSelect"  column="min_select"/>
+        <result property="maxSelect"  column="max_select"/>
+        <result property="minLength"  column="min_length"/>
+        <result property="maxLength"  column="max_length"/>
+        <result property="regex"      column="regex"/>
+        <result property="scaleMin"   column="scale_min"/>
+        <result property="scaleMax"   column="scale_max"/>
+    </resultMap>
+
+    <insert id="insertForm" parameterType="egovframework.pmsi.form.service.FormVO">
+        INSERT INTO form(id, owner_id, title, description, status, cost_credits, max_responses)
+        VALUES (#{formId}, #{ownerId}, #{title}, #{description}, #{status}, #{costCredits}, #{maxResponses})
+    </insert>
+
+    <insert id="insertSection" parameterType="map">
+        INSERT INTO form_section(id, form_id, order_index, title)
+        VALUES (#{sectionId}, #{formId}, #{orderIndex}, #{title})
+    </insert>
+
+    <select id="selectForm" parameterType="string" resultMap="formMap">
+        SELECT id, owner_id, title, description, status, cost_credits, max_responses
+          FROM form
+         WHERE id = #{formId}
+    </select>
+
+    <select id="selectFormList" parameterType="string" resultMap="formMap">
+        SELECT id, owner_id, title, description, status, cost_credits, max_responses
+          FROM form
+         WHERE owner_id = #{ownerId}
+         ORDER BY created_at DESC
+    </select>
+
+    <select id="selectActiveFeed" parameterType="string" resultMap="formMap">
+        SELECT id, owner_id, title, description, status, cost_credits, max_responses
+          FROM form
+         WHERE status = 'ACTIVE'
+           AND owner_id != #{viewerId}
+         ORDER BY created_at DESC
+    </select>
+
+    <select id="selectFirstSectionId" parameterType="string" resultType="string">
+        SELECT id
+          FROM form_section
+         WHERE form_id = #{formId}
+         ORDER BY order_index ASC
+         LIMIT 1
+    </select>
+
+    <select id="selectQuestionTypes" parameterType="string" resultType="string">
+        SELECT type
+          FROM form_question
+         WHERE form_id = #{formId}
+         ORDER BY order_index ASC
+    </select>
+
+    <insert id="insertQuestion" parameterType="egovframework.pmsi.form.service.QuestionVO">
+        INSERT INTO form_question(
+            id, section_id, form_id, type, title, required, order_index,
+            min_select, max_select, min_length, max_length, regex, scale_min, scale_max)
+        VALUES (
+            #{questionId}, #{sectionId}, #{formId}, #{type}, #{title}, #{required}, #{orderIndex},
+            #{minSelect}, #{maxSelect}, #{minLength}, #{maxLength}, #{regex}, #{scaleMin}, #{scaleMax})
+    </insert>
+
+    <insert id="insertOption" parameterType="map">
+        INSERT INTO form_question_option(id, question_id, label, order_index)
+        VALUES (#{optionId}, #{questionId}, #{label}, #{orderIndex})
+    </insert>
+
+    <update id="publish" parameterType="map">
+        UPDATE form
+           SET status = 'ACTIVE',
+               cost_credits = #{cost},
+               updated_at = now()
+         WHERE id = #{formId}
+           AND status = 'DRAFT'
+    </update>
+
+    <select id="selectQuestions" parameterType="string" resultMap="questionMap">
+        SELECT id, section_id, form_id, type, title, required, order_index,
+               min_select, max_select, min_length, max_length, regex, scale_min, scale_max
+          FROM form_question
+         WHERE form_id = #{formId}
+         ORDER BY order_index ASC
+    </select>
+
+    <select id="selectOptionLabels" parameterType="string" resultType="string">
+        SELECT label
+          FROM form_question_option
+         WHERE question_id = #{questionId}
+         ORDER BY order_index ASC
+    </select>
+
+</mapper>
