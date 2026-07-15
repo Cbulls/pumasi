@@ -4,6 +4,8 @@ import egovframework.pmsi.form.service.FormService;
 import egovframework.pmsi.form.service.FormVO;
 import egovframework.pmsi.form.service.QuestionVO;
 
+import egovframework.pmsi.cmm.web.CurrentUser;
+import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -15,14 +17,14 @@ import java.util.Map;
 /**
  * 폼 빌더 API.
  *
- *  POST /pmsi/form                     폼 생성            (X-User-Id)
+ *  POST /pmsi/form                     폼 생성            (@CurrentUser)
  *  POST /pmsi/form/{id}/questions      질문 추가
- *  POST /pmsi/form/{id}/publish        게시(escrow 예치)  (X-User-Id)
+ *  POST /pmsi/form/{id}/publish        게시(escrow 예치)  (@CurrentUser)
  *  GET  /pmsi/form/{id}                폼 조회
  *  GET  /pmsi/form/{id}/questions      질문 목록
  *  GET  /pmsi/form?ownerId=            내 폼 목록
  *
- * 인증 스텁: X-User-Id 헤더로 사용자 식별(소셜 로그인 미구현).
+ * 인증: 로그인 토큰(Bearer)에서 해소한 사용자(@CurrentUser)를 사용. X-User-Id 신뢰 제거.
  * 표준 관례대로 throws Exception 을 컨트롤러까지 전파, 전역 핸들러가 변환.
  */
 @RestController
@@ -34,8 +36,8 @@ public class EgovFormController {
 
     @PostMapping
     public ResponseEntity<Map<String, Object>> createForm(
-            @RequestBody FormVO formVO,
-            @RequestHeader("X-User-Id") String userId) throws Exception {
+            @Valid @RequestBody FormVO formVO,
+            @CurrentUser String userId) throws Exception {
         formVO.setOwnerId(userId);
         String formId = formService.createForm(formVO);
         return ResponseEntity.status(HttpStatus.CREATED).body(Map.of("formId", formId));
@@ -44,7 +46,7 @@ public class EgovFormController {
     @PostMapping("/{formId}/questions")
     public ResponseEntity<Void> addQuestion(
             @PathVariable String formId,
-            @RequestBody QuestionVO questionVO) throws Exception {
+            @Valid @RequestBody QuestionVO questionVO) throws Exception {
         questionVO.setFormId(formId);
         formService.addQuestion(questionVO);
         return ResponseEntity.status(HttpStatus.CREATED).build();
@@ -53,7 +55,7 @@ public class EgovFormController {
     @PostMapping("/{formId}/publish")
     public ResponseEntity<FormVO> publishForm(
             @PathVariable String formId,
-            @RequestHeader("X-User-Id") String userId) throws Exception {
+            @CurrentUser String userId) throws Exception {
         formService.publishForm(formId, userId);
         return ResponseEntity.ok(formService.selectForm(formId));
     }

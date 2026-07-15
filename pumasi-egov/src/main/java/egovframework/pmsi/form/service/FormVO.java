@@ -1,18 +1,34 @@
 package egovframework.pmsi.form.service;
 
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
+
 /**
  * 폼 VO (가변 JavaBean — 표준 관례).
  *
  * status: DRAFT(작성중) → ACTIVE(게시) → CLOSED(마감)
  * costCredits: 응답 1건당 비용. publish 시점에 질문 구성으로 자동 산출(D4).
+ *
+ * Bean Validation은 입력 바인딩(@Valid) 시에만 적용되며 출력에는 영향 없다.
  */
 public class FormVO {
     private String formId;
     private String ownerId;
+
+    @NotBlank(message = "제목은 필수입니다.")
+    @Size(max = 300, message = "제목은 300자 이하여야 합니다.")
     private String title;
+
+    @Size(max = 2000, message = "설명은 2000자 이하여야 합니다.")
     private String description;
+
     private String status;
     private int costCredits;
+
+    @Min(value = 1, message = "최대 응답 수는 1 이상이어야 합니다.")
+    @Max(value = 100000, message = "최대 응답 수가 너무 큽니다.")
     private int maxResponses = 100;
 
     public String getFormId() { return formId; }

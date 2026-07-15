@@ -65,6 +65,51 @@ public class ResultServiceImpl extends EgovAbstractServiceImpl implements Result
         return out;
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public Map<String, Object> responseTable(String formId, String userId) throws Exception {
+        FormVO form = formService.selectForm(formId);
+        if (!form.getOwnerId().equals(userId)) {
+            throw PmsiException.forbidden("result.forbidden", "본인 설문의 결과만 볼 수 있습니다.");
+        }
+
+        // 질문 헤더(열)
+        List<QuestionVO> questions = formService.selectQuestions(formId);
+        List<Map<String, Object>> qHeaders = new ArrayList<>();
+        for (QuestionVO q : questions) {
+            Map<String, Object> h = new LinkedHashMap<>();
+            h.put("questionId", q.getQuestionId());
+            h.put("title", q.getTitle());
+            h.put("type", q.getType());
+            qHeaders.add(h);
+        }
+
+        // 응답별 답변 조립: responseId → (questionId → "값1, 값2")
+        Map<String, Map<String, String>> answersByResponse = new HashMap<>();
+        for (AnswerRow row : resultDAO.selectAllAnswers(formId)) {
+            Map<String, String> cells =
+                    answersByResponse.computeIfAbsent(row.getResponseId(), k -> new HashMap<>());
+            cells.merge(row.getQuestionId(), row.getValue(),
+                    (prev, next) -> prev + ", " + next);   // 다중선택은 콤마로 합침
+        }
+
+        // 행(응답) — respondent_id는 담지 않는다(익명 라벨만)
+        List<Map<String, Object>> rows = new ArrayList<>();
+        for (ResponseRow r : resultDAO.selectResponses(formId)) {
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("anonLabel", r.getAnonLabel());
+            row.put("qualityFlag", r.getQualityFlag());
+            row.put("submittedAt", r.getSubmittedAt());
+            row.put("answers", answersByResponse.getOrDefault(r.getResponseId(), Map.of()));
+            rows.add(row);
+        }
+
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("questions", qHeaders);
+        out.put("rows", rows);
+        return out;
+    }
+
     /** pass 답변 행을 응답 단위로 묶어 RespData 목록 구성 */
     private List<RespData> loadPassResponses(String formId) {
         List<AnswerRow> rows = resultDAO.selectPassAnswers(formId);

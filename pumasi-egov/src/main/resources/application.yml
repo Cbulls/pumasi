@@ -1,5 +1,9 @@
 server:
   port: 8080
+  tomcat:
+    # 폼 POST 본문 상한(추가 방어선). JSON 본문은 SecurityHeadersFilter가 Content-Length로 가드.
+    max-http-form-post-size: 256KB
+    max-swallow-size: 256KB
 
 spring:
   application:
@@ -18,5 +22,9 @@ spring:
 
 logging:
   level:
-    egovframework.pmsi: DEBUG
-    org.mybatis: INFO
+    # 개인정보(응답 답변 등)가 로그에 남지 않도록 상세 로깅을 낮춘다.
+    egovframework.pmsi: INFO
+    org.mybatis: WARN
+    # MyBatis가 바인딩 파라미터를 찍지 않도록 매퍼 로거도 억제
+    egovframework.pmsi.form.service.impl.FormDAO: WARN
+    egovframework.pmsi.response.service.impl.ResponseDAO: WARN

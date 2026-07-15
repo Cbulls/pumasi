@@ -28,6 +28,10 @@ public class PmsiException extends RuntimeException {
         return new PmsiException(HttpStatus.NOT_FOUND, code, message);
     }
 
+    public static PmsiException unauthorized(String code, String message) {
+        return new PmsiException(HttpStatus.UNAUTHORIZED, code, message);
+    }
+
     public static PmsiException forbidden(String code, String message) {
         return new PmsiException(HttpStatus.FORBIDDEN, code, message);
     }

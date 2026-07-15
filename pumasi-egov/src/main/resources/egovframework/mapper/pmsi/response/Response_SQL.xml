@@ -5,8 +5,11 @@
 
     <!-- 1인 1회: (form_id, respondent_id) UNIQUE 위반 시 DuplicateKeyException -->
     <insert id="insertResponse" parameterType="map">
-        INSERT INTO survey_response(id, form_id, respondent_id, quality_flag, elapsed_seconds)
-        VALUES (#{responseId}, #{formId}, #{respondentId}, #{qualityFlag}, #{elapsedSeconds})
+        INSERT INTO survey_response(
+            id, form_id, respondent_id, quality_flag, elapsed_seconds, anon_label, consent_at)
+        VALUES (
+            #{responseId}, #{formId}, #{respondentId}, #{qualityFlag}, #{elapsedSeconds},
+            #{anonLabel}, #{consentAt})
     </insert>
 
     <insert id="insertAnswer" parameterType="map">

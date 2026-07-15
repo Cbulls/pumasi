@@ -2,16 +2,17 @@
 
 import { useCurrentUser } from "@/context/CurrentUserContext";
 
-/** 인증 스텁: 데모 사용자 전환 드롭다운. 선택값이 모든 요청의 X-User-Id 가 된다. */
+/** 데모 계정 전환. 선택 시 해당 계정으로 로그인해 Bearer 토큰을 발급받는다. */
 export default function UserSwitcher() {
-  const { userId, setUserId, users } = useCurrentUser();
+  const { userId, users, switchUser, ready } = useCurrentUser();
   return (
     <label className="flex items-center gap-2 text-sm">
-      <span className="hidden text-slate-500 sm:inline">사용자</span>
+      <span className="hidden text-slate-500 sm:inline">계정</span>
       <select
-        className="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm font-medium outline-none focus:border-brand"
-        value={userId}
-        onChange={(e) => setUserId(e.target.value)}
+        className="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm font-medium outline-none focus:border-brand disabled:opacity-50"
+        value={userId ?? ""}
+        disabled={!ready}
+        onChange={(e) => void switchUser(e.target.value)}
       >
         {users.map((u) => (
           <option key={u.id} value={u.id}>

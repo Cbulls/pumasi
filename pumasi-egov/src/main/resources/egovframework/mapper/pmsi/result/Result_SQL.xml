@@ -15,4 +15,27 @@
            AND r.quality_flag = 'pass'
     </select>
 
+    <!-- 개별 응답 메타(익명화: respondent_id 제외) -->
+    <select id="selectResponses" parameterType="string"
+            resultType="egovframework.pmsi.result.service.impl.ResponseRow">
+        SELECT id                                          AS response_id,
+               anon_label                                  AS anon_label,
+               quality_flag                                AS quality_flag,
+               to_char(submitted_at, 'YYYY-MM-DD HH24:MI') AS submitted_at
+          FROM survey_response
+         WHERE form_id = #{formId}
+         ORDER BY submitted_at ASC
+    </select>
+
+    <!-- 전체 quality의 답변 행 -->
+    <select id="selectAllAnswers" parameterType="string"
+            resultType="egovframework.pmsi.result.service.impl.AnswerRow">
+        SELECT a.response_id AS response_id,
+               a.question_id AS question_id,
+               a.value       AS value
+          FROM survey_response r
+          JOIN survey_answer a ON a.response_id = r.id
+         WHERE r.form_id = #{formId}
+    </select>
+
 </mapper>

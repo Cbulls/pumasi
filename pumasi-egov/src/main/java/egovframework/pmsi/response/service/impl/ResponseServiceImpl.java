@@ -18,6 +18,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import javax.annotation.Resource;
+import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -60,6 +61,11 @@ public class ResponseServiceImpl extends EgovAbstractServiceImpl implements Resp
         if (form.getOwnerId().equals(respondentId)) {
             throw PmsiException.forbidden("response.own.form", "본인 설문에는 응답할 수 없습니다.");
         }
+        // 개인정보 수집·이용 동의 필수(개인정보보호법 준수)
+        if (!req.isConsentAgreed()) {
+            throw PmsiException.badRequest("response.consent.required",
+                    "개인정보 수집·이용에 동의해야 응답을 제출할 수 있습니다.");
+        }
 
         List<QuestionVO> questions = formService.selectQuestions(formId);
         Map<String, QuestionVO> byId = new HashMap<>();
@@ -99,9 +105,11 @@ public class ResponseServiceImpl extends EgovAbstractServiceImpl implements Resp
 
         // 저장 (1인 1회: UNIQUE 위반이면 이미 응답)
         String responseId = UUID.randomUUID().toString();
+        // 익명 라벨: 결과/조회에는 실제 respondent_id 대신 이 값만 노출한다.
+        String anonLabel = "익명-" + responseId.substring(0, 6);
         try {
             responseDAO.insertResponse(responseId, formId, respondentId,
-                    flag.value(), req.getElapsedSeconds());
+                    flag.value(), req.getElapsedSeconds(), anonLabel, OffsetDateTime.now());
         } catch (DuplicateKeyException dup) {
             throw PmsiException.conflict("response.duplicate", "이미 이 설문에 응답했습니다.");
         }
@@ -119,7 +127,7 @@ public class ResponseServiceImpl extends EgovAbstractServiceImpl implements Resp
                     form.getOwnerId(), respondentId, form.getCostCredits(), responseId));
             reward = r.reward();
         }
-        return new SubmitResultVO(responseId, flag.value(), reward);
+        return new SubmitResultVO(responseId, anonLabel, flag.value(), reward);
     }
 
     private boolean isEmpty(AnswerVO a) {

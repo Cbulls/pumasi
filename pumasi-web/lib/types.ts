@@ -46,10 +46,12 @@ export interface SubmitRequest {
   elapsedSeconds: number;
   answers: AnswerVO[];
   attentionPassed?: boolean | null;
+  consentAgreed: boolean;
 }
 
 export interface SubmitResult {
   responseId: string;
+  anonLabel: string;
   qualityFlag: "pass" | "hold" | "reject";
   rewardCredited: number;
 }
@@ -72,4 +74,15 @@ export interface ChartItem {
   average: number;
   median: number;
   textResponses: string[];
+}
+
+// 개별 응답 표(구글폼 "개별 보기")
+export interface ResponsesTable {
+  questions: { questionId: string; title: string; type: QuestionType }[];
+  rows: {
+    anonLabel: string;
+    qualityFlag: "pass" | "hold" | "reject";
+    submittedAt: string;
+    answers: Record<string, string>;
+  }[];
 }

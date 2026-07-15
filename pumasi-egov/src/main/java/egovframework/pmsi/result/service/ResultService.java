@@ -12,4 +12,11 @@ public interface ResultService {
 
     /** 질문별 차트 데이터(pass 응답만 집계) */
     List<Map<String, Object>> chartData(String formId, String userId) throws Exception;
+
+    /**
+     * 개별 응답 표(구글폼 "개별 보기" 유사). 소유자만.
+     * 반환: { questions:[{questionId,title,type}], rows:[{anonLabel,qualityFlag,submittedAt,answers:{qid:"값"}}] }
+     * 실제 respondent_id는 포함하지 않는다(익명 라벨만).
+     */
+    Map<String, Object> responseTable(String formId, String userId) throws Exception;
 }

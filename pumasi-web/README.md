@@ -18,7 +18,7 @@
 | `/forms/[id]/respond` | 응답(유형별 입력, 진행률, 소요시간 측정 → 제출 결과) |
 | `/forms/[id]/results` | 결과 대시보드(pass만 집계 차트, 비소유자는 블러 게이트) |
 
-상단 헤더의 **사용자 스위처**로 데모 계정(`u-owner`/`u-alice`/`u-bob`)을 전환합니다. 선택값이 모든 요청의 `X-User-Id` 헤더가 됩니다(백엔드 인증 스텁). 크레딧 배지는 실시간 잔액을 보여줍니다.
+상단 헤더의 **계정 스위처**로 데모 계정(`u-owner`/`u-alice`/`u-bob`)을 전환합니다. 계정 선택 시 백엔드 `POST /pmsi/auth/login`으로 **로그인 토큰(Bearer)**을 발급받아 모든 요청에 `Authorization` 헤더로 첨부합니다(더 이상 `X-User-Id`를 신뢰하지 않음). 토큰은 `localStorage`에 보관됩니다. 크레딧 배지는 `/pmsi/credit/me`로 본인 잔액을 보여줍니다.
 
 ## 사전 준비: 백엔드 실행
 프론트는 백엔드가 떠 있어야 동작합니다. 이번 작업에서 백엔드에 **CORS 설정**과 **피드 엔드포인트(`GET /pmsi/feed`)**를 추가했으므로 백엔드를 다시 빌드/기동하세요.
@@ -41,18 +41,21 @@ npm run dev                        # http://localhost:3000
 > 백엔드 CORS는 `http://localhost:3000` 을 허용하도록 설정돼 있습니다(포트 변경 시 백엔드 [WebConfig.java](../pumasi-egov/src/main/java/egovframework/pmsi/config/WebConfig.java)도 수정).
 
 ## End-to-End 데모 시나리오
-1. 사용자 = **u-owner** 선택 → `/forms/new`에서 폼 생성(최대 응답 5) → 질문 추가(예: 단일선택/선형배율/단답) → **게시**(크레딧 예치, 헤더 배지의 escrow 증가 확인).
-2. 사용자 = **u-alice**로 전환 → `/feed`에서 해당 설문 **응답하기** → 성실히 작성·제출 → `통과(+N 크레딧)` 결과, 배지 잔액 증가 확인.
-3. 사용자 = **u-bob** → 같은 설문을 열고 **즉시 제출**(고속) → `거절` 결과(크레딧 미지급).
-4. 사용자 = **u-owner** → 대시보드 → 해당 설문 **결과 보기** → pass 응답만 반영된 차트 확인. 다른 계정으로 결과 페이지에 접근하면 블러 게이트가 뜹니다.
+1. 계정 = **u-owner** → `/forms/new`에서 폼 생성(최대 응답 5) → 질문 추가(예: 단일선택/선형배율/단답) → **게시**(크레딧 예치, 배지의 escrow 증가 확인).
+2. 계정 = **u-alice**로 전환 → `/feed`에서 해당 설문 **응답하기** → 개인정보 동의 체크 후 성실히 제출 → `통과(+N 크레딧)`, 익명 라벨(익명-xxxxxx) 표시, 배지 잔액 증가 확인.
+3. 계정 = **u-bob** → 같은 설문을 열고 **즉시 제출**(고속) → `거절`(크레딧 미지급).
+4. 계정 = **u-owner** → 대시보드 → 해당 설문 **결과 보기** → pass 응답만 반영된 차트 확인. 다른 계정으로 결과 페이지에 접근하면 블러 게이트가 뜹니다(백엔드 403).
 
 ## 백엔드 연동 엔드포인트
+- `POST /pmsi/auth/login` (토큰 발급)
 - `POST /pmsi/form`, `POST /pmsi/form/{id}/questions`, `POST /pmsi/form/{id}/publish`
 - `GET /pmsi/form/{id}`, `GET /pmsi/form/{id}/questions`, `GET /pmsi/form?ownerId=`
-- `GET /pmsi/feed` (신규)
-- `POST /pmsi/form/{id}/responses`
+- `GET /pmsi/feed`
+- `POST /pmsi/form/{id}/responses` (동의 필수)
 - `GET /pmsi/form/{id}/results`
-- `GET /pmsi/credit/{userId}`
+- `GET /pmsi/credit/me`
+
+모든 경로(로그인 제외)는 `Authorization: Bearer <token>`가 필요합니다.
 
 ## 범위 밖
 소셜 로그인, 하이브리드 피드 랭킹, 타깃팅 필터, 결제 UI, 엑셀 다운로드, 조건부 분기, 실시간(폴링/웹소켓) 대시보드.

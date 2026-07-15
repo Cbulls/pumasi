@@ -23,6 +23,7 @@ export default function RespondPage({ params }: { params: { id: string } }) {
   const [startedAt] = useState(() => Date.now());
   const [result, setResult] = useState<SubmitResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [consent, setConsent] = useState(false);
 
   const answeredCount = useMemo(
     () =>
@@ -40,6 +41,7 @@ export default function RespondPage({ params }: { params: { id: string } }) {
         questionId: q.questionId,
         values: answers[q.questionId] ?? [],
       })),
+      consentAgreed: consent,
     };
     try {
       const res = await submit.mutateAsync(payload);
@@ -58,6 +60,9 @@ export default function RespondPage({ params }: { params: { id: string } }) {
           <h1 className="text-xl font-extrabold">응답이 제출되었습니다</h1>
           <p className="text-sm text-slate-500">{ui.desc}</p>
           <p className="text-3xl font-extrabold text-brand">+{result.rewardCredited} 크레딧</p>
+          <p className="text-xs text-slate-400">
+            이 응답은 <b>{result.anonLabel}</b> 로 익명 처리되어 제작자에게 개인 식별자가 노출되지 않습니다.
+          </p>
           <div className="flex justify-center gap-2">
             <Link href="/feed" className="btn-primary">피드로 돌아가기</Link>
             <Link href="/" className="btn-ghost">내 설문</Link>
@@ -101,9 +106,26 @@ export default function RespondPage({ params }: { params: { id: string } }) {
         ))}
       </div>
 
+      <label className="flex items-start gap-2 rounded-xl bg-slate-100 p-3 text-sm">
+        <input
+          type="checkbox"
+          className="mt-0.5"
+          checked={consent}
+          onChange={(e) => setConsent(e.target.checked)}
+        />
+        <span>
+          <b>개인정보 수집·이용 동의(필수)</b> — 응답 데이터는 설문 결과 집계 목적으로 수집되며,
+          제작자에게는 익명 라벨로만 제공됩니다.
+        </span>
+      </label>
+
       {error && <p className="rounded-lg bg-red-50 p-3 text-sm text-red-600">{error}</p>}
 
-      <button className="btn-primary w-full" onClick={onSubmit} disabled={submit.isPending}>
+      <button
+        className="btn-primary w-full"
+        onClick={onSubmit}
+        disabled={submit.isPending || !consent}
+      >
         {submit.isPending ? "제출 중…" : "제출하기"}
       </button>
       <p className="text-center text-xs text-slate-400">

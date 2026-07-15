@@ -18,7 +18,7 @@ export default function DashboardPage() {
           <p className="mt-1 text-sm text-white/80">
             남의 설문에 응답해 크레딧을 벌고, 그 크레딧으로 내 설문의 응답자를 모으세요.
           </p>
-          <p className="mt-1 text-xs text-white/60">현재 사용자: {userId}</p>
+          <p className="mt-1 text-xs text-white/60">현재 사용자: {userId ?? "로그인 중…"}</p>
         </div>
         <div className="flex gap-2">
           <Link href="/forms/new" className="btn bg-white text-brand hover:bg-white/90">

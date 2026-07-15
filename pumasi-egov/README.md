@@ -65,56 +65,67 @@ docker compose up -d          # localhost:5432, db=pumasi user/pw=pumasi
 ### 2) 애플리케이션 실행
 
 ```bash
-gradle bootRun                # Flyway가 V1~V3 마이그레이션 + seed 자동 적용
+gradle bootRun                # Flyway가 V1~V5 마이그레이션 + seed 자동 적용
 ```
 
 seed 계정(초기 크레딧): `u-owner`(available 1000), `u-alice`(50), `u-bob`(50), `SYSTEM`(0).
+인증: 모든 `/pmsi/**` 는 로그인 토큰(Authorization: Bearer) 필요(`/pmsi/auth/login` 제외).
 
 ## End-to-End 시나리오 (curl)
 
 ```bash
 BASE=http://localhost:8080
 
-# 1) 폼 생성 (제작자 u-owner, 최대 응답 5건)
+# 0) 로그인해서 토큰 발급 (X-User-Id 신뢰 제거됨)
+OWNER=$(curl -s -X POST $BASE/pmsi/auth/login -H 'Content-Type: application/json' \
+  -d '{"userId":"u-owner"}' | sed 's/.*"token":"//; s/".*//')
+ALICE=$(curl -s -X POST $BASE/pmsi/auth/login -H 'Content-Type: application/json' \
+  -d '{"userId":"u-alice"}' | sed 's/.*"token":"//; s/".*//')
+BOB=$(curl -s -X POST $BASE/pmsi/auth/login -H 'Content-Type: application/json' \
+  -d '{"userId":"u-bob"}' | sed 's/.*"token":"//; s/".*//')
+
+# 1) 폼 생성 (owner = 토큰 주체)
 FORM=$(curl -s -X POST $BASE/pmsi/form \
-  -H 'Content-Type: application/json' -H 'X-User-Id: u-owner' \
+  -H 'Content-Type: application/json' -H "Authorization: Bearer $OWNER" \
   -d '{"title":"색깔 설문","description":"데모","maxResponses":5}' | sed 's/.*"formId":"//; s/".*//')
 echo "formId=$FORM"
 
-# 2) 질문 추가 (단일선택 / 척도 / 단답)
-curl -s -X POST $BASE/pmsi/form/$FORM/questions -H 'Content-Type: application/json' \
+# 2) 질문 추가
+curl -s -X POST $BASE/pmsi/form/$FORM/questions -H 'Content-Type: application/json' -H "Authorization: Bearer $OWNER" \
   -d '{"type":"RADIO","title":"가장 좋아하는 색은?","required":true,"options":["빨강","파랑","초록"]}'
-curl -s -X POST $BASE/pmsi/form/$FORM/questions -H 'Content-Type: application/json' \
+curl -s -X POST $BASE/pmsi/form/$FORM/questions -H 'Content-Type: application/json' -H "Authorization: Bearer $OWNER" \
   -d '{"type":"LINEAR_SCALE","title":"만족도","required":true,"scaleMin":1,"scaleMax":5}'
-curl -s -X POST $BASE/pmsi/form/$FORM/questions -H 'Content-Type: application/json' \
+curl -s -X POST $BASE/pmsi/form/$FORM/questions -H 'Content-Type: application/json' -H "Authorization: Bearer $OWNER" \
   -d '{"type":"SHORT_TEXT","title":"한줄 평","required":false}'
 
-# 3) 게시 → escrow 예치 (cost=3, escrow=3×5=15가 u-owner에서 잠김)
-curl -s -X POST $BASE/pmsi/form/$FORM/publish -H 'X-User-Id: u-owner'
-curl -s $BASE/pmsi/credit/u-owner      # available 985, escrow 15 확인
+# 3) 게시 → escrow 예치
+curl -s -X POST $BASE/pmsi/form/$FORM/publish -H "Authorization: Bearer $OWNER"
+curl -s $BASE/pmsi/credit/me -H "Authorization: Bearer $OWNER"   # available 985, escrow 15
 
-# 질문 ID 확인(응답에 사용)
-curl -s $BASE/pmsi/form/$FORM/questions
+# 질문 ID 확인
+curl -s $BASE/pmsi/form/$FORM/questions -H "Authorization: Bearer $OWNER"
 
-# 4-a) u-alice 정상 응답 → pass → 크레딧 정산(reward 2, burn 1)
-#      (아래 questionId는 3)의 출력값으로 교체)
-curl -s -X POST $BASE/pmsi/form/$FORM/responses -H 'Content-Type: application/json' -H 'X-User-Id: u-alice' \
-  -d '{"elapsedSeconds":40,"answers":[
+# 4-a) u-alice 정상 응답 → pass (동의 필수: consentAgreed=true)
+curl -s -X POST $BASE/pmsi/form/$FORM/responses -H 'Content-Type: application/json' -H "Authorization: Bearer $ALICE" \
+  -d '{"elapsedSeconds":40,"consentAgreed":true,"answers":[
         {"questionId":"<RADIO_Q_ID>","values":["파랑"]},
         {"questionId":"<SCALE_Q_ID>","values":["4"]},
         {"questionId":"<TEXT_Q_ID>","values":["좋아요"]}]}'
+# 응답의 anonLabel(익명-xxxxxx)로 응답자 식별자가 감춰짐
 
-# 4-b) u-bob 고속 제출 → reject → 데이터만 저장, 크레딧 미지급
-curl -s -X POST $BASE/pmsi/form/$FORM/responses -H 'Content-Type: application/json' -H 'X-User-Id: u-bob' \
-  -d '{"elapsedSeconds":1,"answers":[{"questionId":"<RADIO_Q_ID>","values":["빨강"]}]}'
+# 4-b) u-bob 고속 제출 → reject
+curl -s -X POST $BASE/pmsi/form/$FORM/responses -H 'Content-Type: application/json' -H "Authorization: Bearer $BOB" \
+  -d '{"elapsedSeconds":1,"consentAgreed":true,"answers":[{"questionId":"<RADIO_Q_ID>","values":["빨강"]}]}'
 
-# 5) 결과 조회 (pass만 집계 → RADIO 파랑=1, 나머지 0 / respondentCount=1)
-curl -s $BASE/pmsi/form/$FORM/results -H 'X-User-Id: u-owner'
+# 5) 결과 조회 (소유자 토큰 필요, 비소유자는 403)
+curl -s $BASE/pmsi/form/$FORM/results -H "Authorization: Bearer $OWNER"
 
-# 6) 잔액 확인 (u-alice 52, u-owner escrow 12, SYSTEM 1)
-curl -s $BASE/pmsi/credit/u-alice
-curl -s $BASE/pmsi/credit/u-owner
-curl -s $BASE/pmsi/credit/SYSTEM
+# 6) 본인 잔액 확인 (/me)
+curl -s $BASE/pmsi/credit/me -H "Authorization: Bearer $ALICE"
+curl -s $BASE/pmsi/credit/me -H "Authorization: Bearer $OWNER"
+
+# 인증/동의/한도 실패 예시
+curl -s -o /dev/null -w '%{http_code}\n' $BASE/pmsi/feed                       # 401 (토큰 없음)
 ```
 
 ## 테스트
@@ -134,6 +145,8 @@ PUMASI_IT=true gradle test --tests '*IT'      # 정산 멱등 통합 테스트(D
 | V1 | form, form_section, form_question, form_question_option |
 | V2 | credit_balance, credit_ledger (+ seed) |
 | V3 | survey_response, survey_answer |
+| V4 | survey_response에 anon_label, consent_at 추가(익명화·동의) |
+| V5 | user_account(seed), auth_session(로그인 토큰) |
 
 ## 스켈레톤 범위 밖
 
@@ -142,14 +155,26 @@ PUMASI_IT=true gradle test --tests '*IT'      # 정산 멱등 통합 테스트(D
 
 ## API 요약
 
+모든 경로는 `Authorization: Bearer <token>` 필요(로그인 제외).
+
 | 메서드 | 경로 | 설명 |
 |---|---|---|
-| POST | `/pmsi/form` | 폼 생성 (X-User-Id) |
+| POST | `/pmsi/auth/login` | 로그인(계정 선택) → 토큰 발급 (인증 불필요) |
+| POST | `/pmsi/form` | 폼 생성 (owner=토큰 주체) |
 | POST | `/pmsi/form/{id}/questions` | 질문 추가 |
-| POST | `/pmsi/form/{id}/publish` | 게시 + escrow 예치 (X-User-Id) |
+| POST | `/pmsi/form/{id}/publish` | 게시 + escrow 예치 |
 | GET | `/pmsi/form/{id}` | 폼 조회 |
 | GET | `/pmsi/form/{id}/questions` | 질문 목록 |
 | GET | `/pmsi/form?ownerId=` | 내 폼 목록 |
-| POST | `/pmsi/form/{id}/responses` | 응답 제출 (X-User-Id) |
-| GET | `/pmsi/form/{id}/results` | 결과 집계(pass만) (X-User-Id) |
-| GET | `/pmsi/credit/{userId}` | 크레딧 잔액 조회 |
+| GET | `/pmsi/feed` | 응답 피드(게시된 남의 설문) |
+| POST | `/pmsi/form/{id}/responses` | 응답 제출(동의 필수, 익명화) |
+| GET | `/pmsi/form/{id}/results` | 결과 집계(pass만, 소유자만) |
+| GET | `/pmsi/credit/me` | 본인 크레딧 잔액 |
+
+## 보안·개인정보보호 방어
+- 인증: 로그인 토큰(Bearer)만 신뢰. `AuthInterceptor`가 미인증 요청 401. `X-User-Id` 신뢰 제거.
+- 응답 익명화: 결과/응답에 `anon_label`만 노출, 실제 식별자는 내부용.
+- 동의: 응답 제출 시 `consentAgreed` 필수(미동의 400).
+- Rate limit: 쓰기 요청 인메모리 토큰버킷(초과 429).
+- 표면 축소: 보안 응답 헤더, 요청 크기 제한(413), 500 응답 내부 메시지 미노출, PII 로그 억제.
+- 입력 검증: Bean Validation(@Valid) + 유형별 FormValidator/QualityJudge.

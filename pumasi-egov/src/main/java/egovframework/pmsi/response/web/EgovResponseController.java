@@ -4,6 +4,8 @@ import egovframework.pmsi.response.service.ResponseService;
 import egovframework.pmsi.response.service.SubmitRequestVO;
 import egovframework.pmsi.response.service.SubmitResultVO;
 
+import egovframework.pmsi.cmm.web.CurrentUser;
+import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -13,7 +15,7 @@ import javax.annotation.Resource;
 /**
  * 응답 수집 API.
  *
- *  POST /pmsi/form/{formId}/responses    응답 제출 (X-User-Id = 응답자)
+ *  POST /pmsi/form/{formId}/responses    응답 제출 (@CurrentUser = 응답자)
  *
  * 반환: 201 + { responseId, qualityFlag, rewardCredited }
  */
@@ -27,8 +29,8 @@ public class EgovResponseController {
     @PostMapping
     public ResponseEntity<SubmitResultVO> submit(
             @PathVariable String formId,
-            @RequestHeader("X-User-Id") String respondentId,
-            @RequestBody SubmitRequestVO req) throws Exception {
+            @CurrentUser String respondentId,
+            @Valid @RequestBody SubmitRequestVO req) throws Exception {
         SubmitResultVO result = responseService.submit(formId, respondentId, req);
         return ResponseEntity.status(HttpStatus.CREATED).body(result);
     }

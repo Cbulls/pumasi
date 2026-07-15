@@ -1,5 +1,8 @@
 package egovframework.pmsi.form.service;
 
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
+
 import java.util.List;
 
 /**
@@ -12,8 +15,14 @@ public class QuestionVO {
     private String questionId;
     private String formId;
     private String sectionId;
+
+    @NotBlank(message = "질문 유형은 필수입니다.")
     private String type;
+
+    @NotBlank(message = "질문 제목은 필수입니다.")
+    @Size(max = 500, message = "질문 제목은 500자 이하여야 합니다.")
     private String title;
+
     private boolean required;
     private int orderIndex;
 
