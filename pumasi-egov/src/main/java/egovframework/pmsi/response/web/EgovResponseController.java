@@ -15,7 +15,8 @@ import javax.annotation.Resource;
 /**
  * 응답 수집 API.
  *
- *  POST /pmsi/form/{formId}/responses    응답 제출 (@CurrentUser = 응답자)
+ *  POST /pmsi/form/{formId}/responses/start  응답 시작(서버 소요시간 측정 시작)
+ *  POST /pmsi/form/{formId}/responses        응답 제출 (@CurrentUser = 응답자)
  *
  * 반환: 201 + { responseId, qualityFlag, rewardCredited }
  */
@@ -25,6 +26,14 @@ public class EgovResponseController {
 
     @Resource(name = "responseService")
     private ResponseService responseService;
+
+    @PostMapping("/start")
+    public ResponseEntity<Void> start(
+            @PathVariable String formId,
+            @CurrentUser String respondentId) throws Exception {
+        responseService.start(formId, respondentId);
+        return ResponseEntity.noContent().build();
+    }
 
     @PostMapping
     public ResponseEntity<SubmitResultVO> submit(

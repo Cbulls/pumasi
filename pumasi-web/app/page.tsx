@@ -1,10 +1,28 @@
 "use client";
 
 import Link from "next/link";
-import { useMyForms } from "@/lib/hooks";
+import { useCloseForm, useMyForms } from "@/lib/hooks";
 import { useCurrentUser } from "@/context/CurrentUserContext";
 import StatusBadge from "@/components/StatusBadge";
 import { rewardPreview } from "@/lib/format";
+import type { FormVO } from "@/lib/types";
+
+function CloseFormButton({ form }: { form: FormVO }) {
+  const close = useCloseForm(form.formId);
+  return (
+    <button
+      className="btn-ghost"
+      disabled={close.isPending}
+      onClick={() => {
+        if (window.confirm("설문을 마감할까요? 남은 예치 크레딧은 환불됩니다.")) {
+          close.mutate();
+        }
+      }}
+    >
+      {close.isPending ? "마감 중…" : "마감"}
+    </button>
+  );
+}
 
 export default function DashboardPage() {
   const { userId } = useCurrentUser();
@@ -59,6 +77,8 @@ export default function DashboardPage() {
             <div className="text-xs text-slate-500">
               {f.status === "ACTIVE" ? (
                 <>응답 1건당 비용 {f.costCredits} · 보상 +{rewardPreview(f.costCredits)} · 최대 {f.maxResponses}건</>
+              ) : f.status === "CLOSED" ? (
+                <>마감됨 · 최대 {f.maxResponses}건</>
               ) : (
                 <>초안 · 최대 {f.maxResponses}건</>
               )}
@@ -69,9 +89,12 @@ export default function DashboardPage() {
                   이어서 편집 / 게시
                 </Link>
               ) : (
-                <Link href={`/forms/${f.formId}/results`} className="btn-primary flex-1">
-                  결과 보기
-                </Link>
+                <>
+                  <Link href={`/forms/${f.formId}/results`} className="btn-primary flex-1">
+                    결과 보기
+                  </Link>
+                  {f.status === "ACTIVE" && <CloseFormButton form={f} />}
+                </>
               )}
             </div>
           </div>

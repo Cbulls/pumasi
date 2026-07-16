@@ -58,13 +58,18 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
     window.localStorage.setItem(TOKEN_KEY, res.token);
   }, []);
 
-  // 최초 진입: 저장된 토큰 복원, 없으면 기본 계정으로 로그인
+  // 최초 진입: 저장된 토큰을 서버에 검증(/auth/me)한 뒤 복원.
+  // 만료·무효 토큰이면 즉시 재로그인해 첫 API 호출에서 401이 나는 것을 방지한다.
   useEffect(() => {
     const savedUser = window.localStorage.getItem(USER_KEY);
     const savedToken = window.localStorage.getItem(TOKEN_KEY);
     if (savedUser && savedToken) {
-      setUserId(savedUser);
-      setToken(savedToken);
+      apiFetch<{ userId: string }>("/pmsi/auth/me", { token: savedToken })
+        .then((me) => {
+          setUserId(me.userId);
+          setToken(savedToken);
+        })
+        .catch(() => void switchUser(savedUser));
     } else {
       void switchUser(DEMO_USERS[0].id);
     }

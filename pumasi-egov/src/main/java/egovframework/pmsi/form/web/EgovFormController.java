@@ -18,11 +18,12 @@ import java.util.Map;
  * 폼 빌더 API.
  *
  *  POST /pmsi/form                     폼 생성            (@CurrentUser)
- *  POST /pmsi/form/{id}/questions      질문 추가
+ *  POST /pmsi/form/{id}/questions      질문 추가          (@CurrentUser, 소유자만)
  *  POST /pmsi/form/{id}/publish        게시(escrow 예치)  (@CurrentUser)
+ *  POST /pmsi/form/{id}/close          마감 + 잔여 escrow 환불 (@CurrentUser, 소유자만)
  *  GET  /pmsi/form/{id}                폼 조회
  *  GET  /pmsi/form/{id}/questions      질문 목록
- *  GET  /pmsi/form?ownerId=            내 폼 목록
+ *  GET  /pmsi/form                     내 폼 목록(토큰 주체 기준)
  *
  * 인증: 로그인 토큰(Bearer)에서 해소한 사용자(@CurrentUser)를 사용. X-User-Id 신뢰 제거.
  * 표준 관례대로 throws Exception 을 컨트롤러까지 전파, 전역 핸들러가 변환.
@@ -46,9 +47,10 @@ public class EgovFormController {
     @PostMapping("/{formId}/questions")
     public ResponseEntity<Void> addQuestion(
             @PathVariable String formId,
-            @Valid @RequestBody QuestionVO questionVO) throws Exception {
+            @Valid @RequestBody QuestionVO questionVO,
+            @CurrentUser String userId) throws Exception {
         questionVO.setFormId(formId);
-        formService.addQuestion(questionVO);
+        formService.addQuestion(questionVO, userId);
         return ResponseEntity.status(HttpStatus.CREATED).build();
     }
 
@@ -57,6 +59,14 @@ public class EgovFormController {
             @PathVariable String formId,
             @CurrentUser String userId) throws Exception {
         formService.publishForm(formId, userId);
+        return ResponseEntity.ok(formService.selectForm(formId));
+    }
+
+    @PostMapping("/{formId}/close")
+    public ResponseEntity<FormVO> closeForm(
+            @PathVariable String formId,
+            @CurrentUser String userId) throws Exception {
+        formService.closeForm(formId, userId);
         return ResponseEntity.ok(formService.selectForm(formId));
     }
 
@@ -70,8 +80,9 @@ public class EgovFormController {
         return formService.selectQuestions(formId);
     }
 
+    /** 내 폼 목록 — ownerId 파라미터 신뢰 제거, 토큰 주체 기준으로만 조회(IDOR 방지) */
     @GetMapping
-    public List<FormVO> selectFormList(@RequestParam String ownerId) throws Exception {
-        return formService.selectFormList(ownerId);
+    public List<FormVO> selectFormList(@CurrentUser String userId) throws Exception {
+        return formService.selectFormList(userId);
     }
 }

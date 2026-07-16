@@ -35,4 +35,17 @@ public class AuthDAO extends EgovAbstractMapper {
         p.put("now", now);
         return getSqlSession().selectOne(NS + "selectValidUserId", p);
     }
+
+    /** 로그아웃: 세션 삭제 */
+    public void deleteSession(String token) {
+        getSqlSession().delete(NS + "deleteSession", token);
+    }
+
+    /** 해당 유저의 만료 세션 정리(로그인 시 호출) */
+    public void deleteExpiredSessions(String userId, OffsetDateTime now) {
+        Map<String, Object> p = new HashMap<>();
+        p.put("userId", userId);
+        p.put("now", now);
+        getSqlSession().delete(NS + "deleteExpiredSessions", p);
+    }
 }

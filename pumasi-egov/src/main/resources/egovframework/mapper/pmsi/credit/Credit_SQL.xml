@@ -41,6 +41,15 @@
          WHERE user_id = #{userId}
     </update>
 
+    <!-- escrow → available 반환(마감 시 미소진 예치금 환불) -->
+    <update id="moveFromEscrow" parameterType="map">
+        UPDATE credit_balance
+           SET escrow    = escrow - #{amount},
+               available = available + #{amount},
+               version   = version + 1
+         WHERE user_id = #{userId}
+    </update>
+
     <!-- available 증가(적립). 잔액 행이 없으면 생성(UPSERT). -->
     <update id="creditAvailable" parameterType="map">
         INSERT INTO credit_balance(user_id, available, escrow, version)

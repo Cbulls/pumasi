@@ -13,13 +13,12 @@ import type {
   SubmitResult,
 } from "@/lib/types";
 
-/** 내 폼 목록 */
+/** 내 폼 목록 — 서버가 토큰 주체 기준으로 조회(ownerId 파라미터 제거) */
 export function useMyForms() {
   const { userId, token } = useCurrentUser();
   return useQuery({
     queryKey: ["forms", "mine", userId],
-    queryFn: () =>
-      apiFetch<FormVO[]>(`/pmsi/form?ownerId=${encodeURIComponent(userId!)}`, { token }),
+    queryFn: () => apiFetch<FormVO[]>(`/pmsi/form`, { token }),
     enabled: !!token && !!userId,
   });
 }
@@ -116,6 +115,28 @@ export function usePublishForm(formId: string) {
   });
 }
 
+export function useCloseForm(formId: string) {
+  const { userId, token } = useCurrentUser();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiFetch<FormVO>(`/pmsi/form/${formId}/close`, { method: "POST", token }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["form", formId] });
+      qc.invalidateQueries({ queryKey: ["forms", "mine", userId] });
+      qc.invalidateQueries({ queryKey: ["credit", userId] });
+    },
+  });
+}
+
+/** 응답 시작 신고 — 서버가 시작 시각을 기록해 소요시간을 서버에서 계산한다 */
+export function useStartResponse(formId: string) {
+  const { token } = useCurrentUser();
+  return useMutation({
+    mutationFn: () =>
+      apiFetch<void>(`/pmsi/form/${formId}/responses/start`, { method: "POST", token }),
+  });
+}
+
 export function useSubmitResponse(formId: string) {
   const { userId, token } = useCurrentUser();
   const qc = useQueryClient();
@@ -124,6 +145,7 @@ export function useSubmitResponse(formId: string) {
       apiFetch<SubmitResult>(`/pmsi/form/${formId}/responses`, { method: "POST", token, body }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["credit", userId] });
+      qc.invalidateQueries({ queryKey: ["feed"] });
     },
   });
 }

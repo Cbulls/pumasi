@@ -30,6 +30,7 @@ public class CreditServiceImpl extends EgovAbstractServiceImpl implements Credit
 
     /** 원장 사유 코드 */
     private static final String ESCROW_DEPOSIT = "ESCROW_DEPOSIT";
+    private static final String ESCROW_REFUND  = "ESCROW_REFUND";
     private static final String SPEND_ESCROW   = "SPEND_ESCROW";
     private static final String EARN_RESPONSE  = "EARN_RESPONSE";
     private static final String BURN           = "BURN";
@@ -56,6 +57,26 @@ public class CreditServiceImpl extends EgovAbstractServiceImpl implements Credit
         }
         creditDAO.moveToEscrow(userId, amount);
         creditDAO.insertLedger(userId, -amount, ESCROW_DEPOSIT, refId);
+    }
+
+    @Override
+    @Transactional
+    public void refundEscrow(String userId, long amount, String refId) throws Exception {
+        if (amount <= 0) return;
+        // 멱등: 같은 폼(refId)에 대한 환불은 1회만
+        if (creditDAO.ledgerExists(ESCROW_REFUND, refId)) {
+            return;
+        }
+        CreditBalanceVO owner = creditDAO.selectForUpdate(userId);   // 비관적 락
+        if (owner == null) {
+            throw PmsiException.notFound("credit.account.notfound", "잔액 계정 없음: " + userId);
+        }
+        if (owner.getEscrow() < amount) {
+            throw PmsiException.conflict("credit.escrow.mismatch",
+                    "환불할 예치금이 부족합니다. 필요=" + amount + ", escrow=" + owner.getEscrow());
+        }
+        creditDAO.moveFromEscrow(userId, amount);
+        creditDAO.insertLedger(userId, amount, ESCROW_REFUND, refId);
     }
 
     @Override

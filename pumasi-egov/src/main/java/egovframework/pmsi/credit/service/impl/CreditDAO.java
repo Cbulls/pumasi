@@ -42,6 +42,11 @@ public class CreditDAO extends EgovAbstractMapper {
         getSqlSession().update(NS + "debitEscrow", params(userId, amount));
     }
 
+    /** escrow → available 반환(마감 시 미소진 예치금 환불) */
+    public void moveFromEscrow(String userId, long amount) {
+        getSqlSession().update(NS + "moveFromEscrow", params(userId, amount));
+    }
+
     /** available 증가(적립). 잔액 행이 없으면 생성(UPSERT). */
     public void creditAvailable(String userId, long amount) {
         getSqlSession().update(NS + "creditAvailable", params(userId, amount));

@@ -42,10 +42,9 @@ export interface AnswerVO {
   values: string[];
 }
 
+// 소요시간은 서버가 응답 시작(start) 시각 기준으로 계산한다(클라이언트 값 미신뢰)
 export interface SubmitRequest {
-  elapsedSeconds: number;
   answers: AnswerVO[];
-  attentionPassed?: boolean | null;
   consentAgreed: boolean;
 }
 

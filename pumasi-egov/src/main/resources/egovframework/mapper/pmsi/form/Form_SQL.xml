@@ -46,6 +46,22 @@
          WHERE id = #{formId}
     </select>
 
+    <!-- 행 잠금 조회: 응답 상한 검사·마감이 동시에 얽히지 않게 폼 단위로 직렬화 -->
+    <select id="selectFormForUpdate" parameterType="string" resultMap="formMap">
+        SELECT id, owner_id, title, description, status, cost_credits, max_responses
+          FROM form
+         WHERE id = #{formId}
+        FOR UPDATE
+    </select>
+
+    <!-- pass 판정 응답 수 = escrow를 소진한 응답 수 (maxResponses 상한 기준) -->
+    <select id="countPassResponses" parameterType="string" resultType="int">
+        SELECT COUNT(1)
+          FROM survey_response
+         WHERE form_id = #{formId}
+           AND quality_flag = 'pass'
+    </select>
+
     <select id="selectFormList" parameterType="string" resultMap="formMap">
         SELECT id, owner_id, title, description, status, cost_credits, max_responses
           FROM form
@@ -53,12 +69,19 @@
          ORDER BY created_at DESC
     </select>
 
+    <!-- 응답 피드: 게시 중 + 남의 폼 + 아직 내가 응답하지 않은 폼 -->
     <select id="selectActiveFeed" parameterType="string" resultMap="formMap">
-        SELECT id, owner_id, title, description, status, cost_credits, max_responses
-          FROM form
-         WHERE status = 'ACTIVE'
-           AND owner_id != #{viewerId}
-         ORDER BY created_at DESC
+        SELECT f.id, f.owner_id, f.title, f.description, f.status, f.cost_credits, f.max_responses
+          FROM form f
+         WHERE f.status = 'ACTIVE'
+           AND f.owner_id != #{viewerId}
+           AND NOT EXISTS (
+                SELECT 1
+                  FROM survey_response r
+                 WHERE r.form_id = f.id
+                   AND r.respondent_id = #{viewerId}
+           )
+         ORDER BY f.created_at DESC
     </select>
 
     <select id="selectFirstSectionId" parameterType="string" resultType="string">
@@ -97,6 +120,14 @@
                updated_at = now()
          WHERE id = #{formId}
            AND status = 'DRAFT'
+    </update>
+
+    <update id="close" parameterType="string">
+        UPDATE form
+           SET status = 'CLOSED',
+               updated_at = now()
+         WHERE id = #{formId}
+           AND status = 'ACTIVE'
     </update>
 
     <select id="selectQuestions" parameterType="string" resultMap="questionMap">

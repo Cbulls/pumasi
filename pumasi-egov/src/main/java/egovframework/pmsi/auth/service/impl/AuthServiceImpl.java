@@ -33,6 +33,8 @@ public class AuthServiceImpl extends EgovAbstractServiceImpl implements AuthServ
         if (userId == null || userId.isBlank() || !authDAO.existsUser(userId)) {
             throw PmsiException.unauthorized("auth.unknown.user", "알 수 없는 계정입니다: " + userId);
         }
+        // 세션 행 무한 누적 방지: 이 유저의 만료 세션을 정리하고 새 토큰 발급
+        authDAO.deleteExpiredSessions(userId, OffsetDateTime.now());
         String token = UUID.randomUUID().toString().replace("-", "");
         OffsetDateTime expiresAt = OffsetDateTime.now().plusDays(TOKEN_TTL_DAYS);
         authDAO.insertSession(token, userId, expiresAt);
@@ -44,5 +46,12 @@ public class AuthServiceImpl extends EgovAbstractServiceImpl implements AuthServ
     public String resolve(String token) throws Exception {
         if (token == null || token.isBlank()) return null;
         return authDAO.selectValidUserId(token, OffsetDateTime.now());
+    }
+
+    @Override
+    @Transactional
+    public void logout(String token) throws Exception {
+        if (token == null || token.isBlank()) return;
+        authDAO.deleteSession(token);
     }
 }

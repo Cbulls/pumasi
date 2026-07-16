@@ -16,7 +16,9 @@ import java.util.concurrent.ConcurrentHashMap;
  * 쓰기 요청(POST) 남용 방지 — 인메모리 토큰버킷 rate limit.
  *
  * "운영 보강" 모듈의 TokenBucketRateLimiter 로직을 필터로 포팅.
- *  - 키: Authorization > X-User-Id > 원격 IP (사용자/클라이언트별 독립 버킷)
+ *  - 키: 로그인 등 인증 경로(/pmsi/auth/**)는 원격 IP — 재로그인으로 새 토큰을 받아
+ *        버킷을 우회하는 것을 차단한다. 그 외는 Authorization 토큰, 없으면 원격 IP.
+ *        (위조 가능한 X-User-Id 헤더는 키로 쓰지 않는다)
  *  - 버킷: 용량 20, 초당 2개 보충(순간 버스트 허용 + 지속 남용 차단)
  *  - 초과 시 429.
  *
@@ -63,10 +65,12 @@ public class RateLimitFilter extends OncePerRequestFilter {
     }
 
     private String keyOf(HttpServletRequest req) {
+        // 인증 경로는 IP 기준: 로그인을 반복해 새 토큰 버킷을 만드는 우회를 차단
+        if (req.getRequestURI().startsWith("/pmsi/auth/")) {
+            return "ip:" + req.getRemoteAddr();
+        }
         String auth = req.getHeader("Authorization");
         if (auth != null && !auth.isBlank()) return "tok:" + auth;
-        String uid = req.getHeader("X-User-Id");
-        if (uid != null && !uid.isBlank()) return "uid:" + uid;
         return "ip:" + req.getRemoteAddr();
     }
 

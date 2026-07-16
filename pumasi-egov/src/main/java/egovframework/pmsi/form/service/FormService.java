@@ -10,14 +10,32 @@ public interface FormService {
     /** 폼 생성(기본 섹션 1개 자동 생성) → formId */
     String createForm(FormVO formVO) throws Exception;
 
-    /** 질문 추가(유형별 검증 포함) */
-    void addQuestion(QuestionVO questionVO) throws Exception;
+    /** 질문 추가(유형별 검증 포함). 소유자만 가능. */
+    void addQuestion(QuestionVO questionVO, String userId) throws Exception;
 
     /** 게시(DRAFT → ACTIVE). 비용 자동 산출 + escrow 예치(cost × maxResponses). */
     void publishForm(String formId, String userId) throws Exception;
 
+    /** 마감(ACTIVE → CLOSED). 소유자만 가능. 미소진 escrow는 환불. */
+    void closeForm(String formId, String userId) throws Exception;
+
     /** 폼 단건 조회(owner/status/cost 포함) */
     FormVO selectForm(String formId) throws Exception;
+
+    /**
+     * 폼 단건 조회 + 행 잠금(FOR UPDATE).
+     * 응답 제출 시 maxResponses 상한 검사를 직렬화하기 위해 사용한다.
+     */
+    FormVO selectFormForUpdate(String formId) throws Exception;
+
+    /** pass 판정 응답 수(escrow를 소진한 응답 수) */
+    int countPassResponses(String formId) throws Exception;
+
+    /**
+     * pass 응답이 maxResponses에 도달했으면 CLOSED로 전환.
+     * 응답 제출 트랜잭션에서 정산 직후 호출된다(자동 마감).
+     */
+    void closeIfFull(String formId) throws Exception;
 
     /** 내 폼 목록 */
     List<FormVO> selectFormList(String ownerId) throws Exception;

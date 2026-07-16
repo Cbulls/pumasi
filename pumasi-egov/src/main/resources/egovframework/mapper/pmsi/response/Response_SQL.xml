@@ -17,4 +17,25 @@
         VALUES (#{responseId}, #{questionId}, #{value})
     </insert>
 
+    <!-- 응답 시작 기록(서버 소요시간 측정). 재시작하면 started_at 갱신 -->
+    <insert id="upsertSession" parameterType="map">
+        INSERT INTO response_session(form_id, respondent_id, started_at)
+        VALUES (#{formId}, #{respondentId}, now())
+        ON CONFLICT (form_id, respondent_id)
+        DO UPDATE SET started_at = now()
+    </insert>
+
+    <select id="selectSessionStartedAt" parameterType="map" resultType="java.time.OffsetDateTime">
+        SELECT started_at
+          FROM response_session
+         WHERE form_id = #{formId}
+           AND respondent_id = #{respondentId}
+    </select>
+
+    <delete id="deleteSession" parameterType="map">
+        DELETE FROM response_session
+         WHERE form_id = #{formId}
+           AND respondent_id = #{respondentId}
+    </delete>
+
 </mapper>

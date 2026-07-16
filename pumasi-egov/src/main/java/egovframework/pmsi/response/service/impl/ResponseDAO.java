@@ -38,4 +38,26 @@ public class ResponseDAO extends EgovAbstractMapper {
         p.put("value", value);
         getSqlSession().insert(NS + "insertAnswer", p);
     }
+
+    /** 응답 시작 기록(재시작하면 started_at 갱신) — 서버 소요시간 측정용 */
+    public void upsertSession(String formId, String respondentId) {
+        getSqlSession().insert(NS + "upsertSession", sessionKey(formId, respondentId));
+    }
+
+    /** 응답 시작 시각(없으면 null) */
+    public OffsetDateTime selectSessionStartedAt(String formId, String respondentId) {
+        return getSqlSession().selectOne(NS + "selectSessionStartedAt", sessionKey(formId, respondentId));
+    }
+
+    /** 제출 완료 후 세션 정리 */
+    public void deleteSession(String formId, String respondentId) {
+        getSqlSession().delete(NS + "deleteSession", sessionKey(formId, respondentId));
+    }
+
+    private Map<String, Object> sessionKey(String formId, String respondentId) {
+        Map<String, Object> p = new HashMap<>();
+        p.put("formId", formId);
+        p.put("respondentId", respondentId);
+        return p;
+    }
 }

@@ -37,6 +37,17 @@ public class FormDAO extends EgovAbstractMapper {
         return getSqlSession().selectOne(NS + "selectForm", formId);
     }
 
+    /** 행 잠금 조회(FOR UPDATE) — 응답 상한 검사/마감의 직렬화용 */
+    public FormVO selectFormForUpdate(String formId) {
+        return getSqlSession().selectOne(NS + "selectFormForUpdate", formId);
+    }
+
+    /** pass 판정 응답 수(escrow 소진 건수) */
+    public int countPassResponses(String formId) {
+        Integer cnt = getSqlSession().selectOne(NS + "countPassResponses", formId);
+        return cnt == null ? 0 : cnt;
+    }
+
     public List<FormVO> selectFormList(String ownerId) {
         return getSqlSession().selectList(NS + "selectFormList", ownerId);
     }
@@ -73,6 +84,11 @@ public class FormDAO extends EgovAbstractMapper {
         p.put("formId", formId);
         p.put("cost", cost);
         getSqlSession().update(NS + "publish", p);
+    }
+
+    /** ACTIVE → CLOSED */
+    public void close(String formId) {
+        getSqlSession().update(NS + "close", formId);
     }
 
     public List<QuestionVO> selectQuestions(String formId) {

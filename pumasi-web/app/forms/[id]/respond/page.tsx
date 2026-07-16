@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { useForm, useQuestions, useSubmitResponse } from "@/lib/hooks";
+import { useForm, useQuestions, useStartResponse, useSubmitResponse } from "@/lib/hooks";
+import { ApiError } from "@/lib/api";
 import AnswerInput from "@/components/AnswerInput";
 import ProgressBar from "@/components/ProgressBar";
 import type { SubmitResult } from "@/lib/types";
@@ -17,13 +18,32 @@ export default function RespondPage({ params }: { params: { id: string } }) {
   const formId = params.id;
   const { data: form } = useForm(formId);
   const { data: questions } = useQuestions(formId);
+  const start = useStartResponse(formId);
   const submit = useSubmitResponse(formId);
 
   const [answers, setAnswers] = useState<Record<string, string[]>>({});
-  const [startedAt] = useState(() => Date.now());
   const [result, setResult] = useState<SubmitResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [consent, setConsent] = useState(false);
+  const [blocked, setBlocked] = useState<string | null>(null);
+
+  // 진입 시 응답 시작을 서버에 기록(소요시간은 서버가 계산)
+  const startMutate = start.mutateAsync;
+  const startedRef = useRef(false);
+  useEffect(() => {
+    if (startedRef.current || !form) return;
+    startedRef.current = true;
+    startMutate().catch((e) => {
+      const err = e as ApiError;
+      if (err.code === "form.closed" || err.code === "form.not.active") {
+        setBlocked("이 설문은 마감되었거나 아직 게시되지 않았습니다.");
+      } else if (err.code === "response.own.form") {
+        setBlocked("본인 설문에는 응답할 수 없습니다.");
+      } else {
+        setBlocked(err.message);
+      }
+    });
+  }, [form, startMutate]);
 
   const answeredCount = useMemo(
     () =>
@@ -36,7 +56,6 @@ export default function RespondPage({ params }: { params: { id: string } }) {
   const onSubmit = async () => {
     setError(null);
     const payload = {
-      elapsedSeconds: Math.floor((Date.now() - startedAt) / 1000),
       answers: (questions ?? []).map((q) => ({
         questionId: q.questionId,
         values: answers[q.questionId] ?? [],
@@ -47,9 +66,31 @@ export default function RespondPage({ params }: { params: { id: string } }) {
       const res = await submit.mutateAsync(payload);
       setResult(res);
     } catch (e) {
-      setError((e as Error).message);
+      const err = e as ApiError;
+      if (err.code === "form.full") {
+        setError("응답 정원이 가득 차서 더 이상 응답을 받을 수 없습니다.");
+      } else if (err.code === "form.closed") {
+        setError("이 설문은 마감되었습니다.");
+      } else {
+        setError(err.message);
+      }
     }
   };
+
+  if (blocked) {
+    return (
+      <div className="mx-auto max-w-lg space-y-4 text-center">
+        <div className="card space-y-3">
+          <h1 className="text-xl font-extrabold">응답할 수 없습니다</h1>
+          <p className="text-sm text-slate-500">{blocked}</p>
+          <div className="flex justify-center gap-2">
+            <Link href="/feed" className="btn-primary">피드로 돌아가기</Link>
+            <Link href="/" className="btn-ghost">내 설문</Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (result) {
     const ui = FLAG_UI[result.qualityFlag];

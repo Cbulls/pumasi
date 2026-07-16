@@ -32,7 +32,15 @@ export async function apiFetch<T>(path: string, opts: FetchOpts = {}): Promise<T
   });
 
   const text = await res.text();
-  const data = text ? JSON.parse(text) : null;
+  let data: any = null;
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      // 프록시 오류 페이지 등 비JSON 응답 — 상태 코드 기반 메시지로 처리
+      data = null;
+    }
+  }
 
   if (!res.ok) {
     const message = (data && (data.message as string)) || `요청 실패 (${res.status})`;

@@ -54,10 +54,13 @@ public class FormServiceImpl extends EgovAbstractServiceImpl implements FormServ
 
     @Override
     @Transactional
-    public void addQuestion(QuestionVO vo) throws Exception {
+    public void addQuestion(QuestionVO vo, String userId) throws Exception {
         FormVO form = formDAO.selectForm(vo.getFormId());
         if (form == null) {
             throw PmsiException.notFound("form.notfound", "폼 없음: " + vo.getFormId());
+        }
+        if (!form.getOwnerId().equals(userId)) {
+            throw PmsiException.forbidden("form.forbidden", "본인 폼에만 질문을 추가할 수 있습니다.");
         }
         if (!"DRAFT".equals(form.getStatus())) {
             throw PmsiException.conflict("form.not.draft", "게시된 폼에는 질문을 추가할 수 없습니다.");
@@ -118,6 +121,30 @@ public class FormServiceImpl extends EgovAbstractServiceImpl implements FormServ
     }
 
     @Override
+    @Transactional
+    public void closeForm(String formId, String userId) throws Exception {
+        // 행 잠금: 진행 중인 응답 제출(정산)과 직렬화해 escrow 계산이 어긋나지 않게 한다.
+        FormVO form = formDAO.selectFormForUpdate(formId);
+        if (form == null) {
+            throw PmsiException.notFound("form.notfound", "폼 없음: " + formId);
+        }
+        if (!form.getOwnerId().equals(userId)) {
+            throw PmsiException.forbidden("form.forbidden", "본인 폼만 마감할 수 있습니다.");
+        }
+        if (!"ACTIVE".equals(form.getStatus())) {
+            throw PmsiException.conflict("form.not.active", "게시 중인 폼만 마감할 수 있습니다.");
+        }
+
+        // 미소진 escrow 환불: pass 응답만 escrow(cost)를 소진했다.
+        int passCount = formDAO.countPassResponses(formId);
+        long remaining = (long) form.getCostCredits()
+                * Math.max(0, form.getMaxResponses() - passCount);
+        creditService.refundEscrow(form.getOwnerId(), remaining, formId);
+
+        formDAO.close(formId);
+    }
+
+    @Override
     @Transactional(readOnly = true)
     public FormVO selectForm(String formId) throws Exception {
         FormVO form = formDAO.selectForm(formId);
@@ -125,6 +152,33 @@ public class FormServiceImpl extends EgovAbstractServiceImpl implements FormServ
             throw PmsiException.notFound("form.notfound", "폼 없음: " + formId);
         }
         return form;
+    }
+
+    @Override
+    @Transactional
+    public FormVO selectFormForUpdate(String formId) throws Exception {
+        FormVO form = formDAO.selectFormForUpdate(formId);
+        if (form == null) {
+            throw PmsiException.notFound("form.notfound", "폼 없음: " + formId);
+        }
+        return form;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public int countPassResponses(String formId) throws Exception {
+        return formDAO.countPassResponses(formId);
+    }
+
+    @Override
+    @Transactional
+    public void closeIfFull(String formId) throws Exception {
+        FormVO form = formDAO.selectForm(formId);
+        if (form == null || !"ACTIVE".equals(form.getStatus())) return;
+        if (formDAO.countPassResponses(formId) >= form.getMaxResponses()) {
+            // escrow는 cost × maxResponses 만큼 정확히 소진되었으므로 환불 없음
+            formDAO.close(formId);
+        }
     }
 
     @Override
