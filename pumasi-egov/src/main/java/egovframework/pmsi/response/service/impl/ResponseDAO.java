@@ -54,6 +54,13 @@ public class ResponseDAO extends EgovAbstractMapper {
         getSqlSession().delete(NS + "deleteSession", sessionKey(formId, respondentId));
     }
 
+    /** 해당 폼에 응답을 제출했는지 */
+    public boolean existsByFormAndRespondent(String formId, String respondentId) {
+        Integer cnt = getSqlSession().selectOne(NS + "existsByFormAndRespondent",
+                sessionKey(formId, respondentId));
+        return cnt != null && cnt > 0;
+    }
+
     private Map<String, Object> sessionKey(String formId, String respondentId) {
         Map<String, Object> p = new HashMap<>();
         p.put("formId", formId);

@@ -4,12 +4,13 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * 질문 VO.
  *
- * 지원 유형(스켈레톤): SHORT_TEXT, LONG_TEXT, RADIO, CHECKBOX, LINEAR_SCALE.
- * 유형마다 허용 옵션이 다른 게 폼 빌더의 핵심 복잡도 → FormValidator가 검증.
+ * 지원 유형: SHORT_TEXT, LONG_TEXT, RADIO, CHECKBOX, LINEAR_SCALE,
+ *           DESCRIPTION, IMAGE, FILE.
  */
 public class QuestionVO {
     private String questionId;
@@ -26,15 +27,25 @@ public class QuestionVO {
     private boolean required;
     private int orderIndex;
 
-    private List<String> options;   // 선택형(RADIO/CHECKBOX) 보기 라벨
+    private List<String> options;
 
-    private Integer minSelect;      // CHECKBOX 최소 선택 개수
-    private Integer maxSelect;      // CHECKBOX 최대 선택 개수
-    private Integer minLength;      // 텍스트 최소 글자수
-    private Integer maxLength;      // 텍스트 최대 글자수
-    private String  regex;          // 단답형 정규식
-    private Integer scaleMin;       // LINEAR_SCALE 최소값
-    private Integer scaleMax;       // LINEAR_SCALE 최대값
+    private Integer minSelect;
+    private Integer maxSelect;
+    private Integer minLength;
+    private Integer maxLength;
+    private String  regex;
+    private Integer scaleMin;
+    private Integer scaleMax;
+
+    /** DESCRIPTION 본문(HTML/텍스트) */
+    private String bodyHtml;
+    /** IMAGE 이미지 URL */
+    private String imageUrl;
+    /**
+     * RADIO 분기 규칙: 보기 라벨 → sectionId, 특수 키 "_default".
+     * DB에는 JSONB로 저장, API에서는 Map으로 주고받는다.
+     */
+    private Map<String, String> branchRules;
 
     public String getQuestionId() { return questionId; }
     public void setQuestionId(String questionId) { this.questionId = questionId; }
@@ -66,4 +77,10 @@ public class QuestionVO {
     public void setScaleMin(Integer scaleMin) { this.scaleMin = scaleMin; }
     public Integer getScaleMax() { return scaleMax; }
     public void setScaleMax(Integer scaleMax) { this.scaleMax = scaleMax; }
+    public String getBodyHtml() { return bodyHtml; }
+    public void setBodyHtml(String bodyHtml) { this.bodyHtml = bodyHtml; }
+    public String getImageUrl() { return imageUrl; }
+    public void setImageUrl(String imageUrl) { this.imageUrl = imageUrl; }
+    public Map<String, String> getBranchRules() { return branchRules; }
+    public void setBranchRules(Map<String, String> branchRules) { this.branchRules = branchRules; }
 }

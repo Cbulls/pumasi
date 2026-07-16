@@ -1,5 +1,6 @@
 package egovframework.pmsi.credit.service.impl;
 
+import egovframework.pmsi.cmm.PmsiException;
 import egovframework.pmsi.credit.service.CreditBalanceVO;
 import org.egovframe.rte.psl.dataaccess.EgovAbstractMapper;
 import org.springframework.stereotype.Repository;
@@ -8,22 +9,17 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * 크레딧 DAO — 전자정부표준프레임워크 EgovAbstractMapper 상속(MyBatis).
+ * 크레딧 DAO — EgovAbstractMapper 상속(MyBatis).
  *
- * 동시성 설계(D6):
- *  - 제작자 예치금은 핫 계정 → selectForUpdate(비관적 락, SELECT ... FOR UPDATE)
- *  - 응답자 적립은 콜드 계정 → creditAvailable(원자적 증가 UPDATE/UPSERT)
- *  - 원장 (reason, ref_id) UNIQUE 로 멱등(이중 정산 차단)
- *
- * 쿼리는 EgovAbstractMapper가 제공하는 getSqlSession()(MyBatis SqlSession)으로 실행한다
- * (실행환경 버전 간 래퍼 메서드 차이에 안전).
+ * 동시성: 제작자 예치금 SELECT FOR UPDATE(비관적 락).
+ * version 컬럼은 변경 카운터일 뿐 CAS(낙관적 락)에는 쓰지 않는다.
+ * available 원장 사유: GENESIS / ESCROW_DEPOSIT / ESCROW_REFUND / EARN_RESPONSE / SIGNUP_BONUS / BURN.
  */
 @Repository("creditDAO")
 public class CreditDAO extends EgovAbstractMapper {
 
     private static final String NS = "creditMapper.";
 
-    /** 비관적 락으로 잔액 행을 잠그고 조회(없으면 null) */
     public CreditBalanceVO selectForUpdate(String userId) {
         return getSqlSession().selectOne(NS + "selectForUpdate", userId);
     }
@@ -32,27 +28,37 @@ public class CreditDAO extends EgovAbstractMapper {
         return getSqlSession().selectOne(NS + "selectBalance", userId);
     }
 
-    /** available → escrow 이동(예치) */
+    /** available → escrow. 잔액 부족 시 예외. */
     public void moveToEscrow(String userId, long amount) {
-        getSqlSession().update(NS + "moveToEscrow", params(userId, amount));
+        int n = getSqlSession().update(NS + "moveToEscrow", params(userId, amount));
+        if (n == 0) {
+            throw PmsiException.paymentRequired("credit.insufficient",
+                    "예치할 크레딧이 부족합니다.");
+        }
     }
 
-    /** escrow 차감(응답 확정 시 소진) */
+    /** escrow 차감. 부족 시 예외. */
     public void debitEscrow(String userId, long amount) {
-        getSqlSession().update(NS + "debitEscrow", params(userId, amount));
+        int n = getSqlSession().update(NS + "debitEscrow", params(userId, amount));
+        if (n == 0) {
+            throw PmsiException.paymentRequired("credit.escrow.insufficient",
+                    "예치금이 소진되어 정산할 수 없습니다.");
+        }
     }
 
-    /** escrow → available 반환(마감 시 미소진 예치금 환불) */
+    /** escrow → available. 부족 시 예외. */
     public void moveFromEscrow(String userId, long amount) {
-        getSqlSession().update(NS + "moveFromEscrow", params(userId, amount));
+        int n = getSqlSession().update(NS + "moveFromEscrow", params(userId, amount));
+        if (n == 0) {
+            throw PmsiException.conflict("credit.escrow.mismatch",
+                    "환불할 예치금이 부족합니다.");
+        }
     }
 
-    /** available 증가(적립). 잔액 행이 없으면 생성(UPSERT). */
     public void creditAvailable(String userId, long amount) {
         getSqlSession().update(NS + "creditAvailable", params(userId, amount));
     }
 
-    /** 멱등 사전 체크: 해당 (reason, refId) 원장이 이미 있는가 */
     public boolean ledgerExists(String reason, String refId) {
         Map<String, Object> p = new HashMap<>();
         p.put("reason", reason);
@@ -61,7 +67,6 @@ public class CreditDAO extends EgovAbstractMapper {
         return cnt != null && cnt > 0;
     }
 
-    /** append-only 원장 기록. (reason, ref_id) UNIQUE 위반 시 DuplicateKeyException */
     public void insertLedger(String userId, long delta, String reason, String refId) {
         Map<String, Object> p = new HashMap<>();
         p.put("userId", userId);

@@ -19,4 +19,7 @@ public interface ResultService {
      * 실제 respondent_id는 포함하지 않는다(익명 라벨만).
      */
     Map<String, Object> responseTable(String formId, String userId) throws Exception;
+
+    /** 개별 응답 CSV(UTF-8 BOM). 소유자만. */
+    String exportCsv(String formId, String userId) throws Exception;
 }

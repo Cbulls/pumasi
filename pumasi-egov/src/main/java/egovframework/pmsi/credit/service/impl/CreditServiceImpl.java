@@ -18,20 +18,23 @@ import javax.annotation.Resource;
  * ★ 표준 규약: EgovAbstractServiceImpl 상속 + @Resource 이름 기반 주입.
  *
  * 정산은 하나의 트랜잭션에서:
- *   [비관적 락] 제작자 escrow -cost
- *   [원자 증가] 응답자 available +reward
- *   [원자 증가] 시스템 available +burn
- * 셋 다 성공해야 커밋. 하나라도 실패하면 전부 롤백(화폐 보존).
+ *   [비관적 락] 제작자 escrow -cost  (available 원장에는 기록하지 않음)
+ *   [원자 증가] 응답자 available +reward + EARN_RESPONSE 원장
+ *   [원자 증가] 시스템 available +burn + BURN 원장
  *
- * 멱등: (reason=EARN_RESPONSE, ref_id=responseId) UNIQUE. 사전 체크 + DB 제약 2중 방어.
+ * available 불변식:
+ *   available = SUM(ledger.delta) WHERE reason IN
+ *     (GENESIS, ESCROW_DEPOSIT, ESCROW_REFUND, EARN_RESPONSE, SIGNUP_BONUS, BURN)
+ * SPEND_ESCROW는 legacy로만 남을 수 있으며 신규 정산에서는 owner 원장에 쓰지 않는다.
+ *
+ * 멱등: (reason=EARN_RESPONSE, ref_id=responseId) UNIQUE.
  */
 @Service("creditService")
 public class CreditServiceImpl extends EgovAbstractServiceImpl implements CreditService {
 
-    /** 원장 사유 코드 */
+    /** available에 영향을 주는 원장 사유 */
     private static final String ESCROW_DEPOSIT = "ESCROW_DEPOSIT";
     private static final String ESCROW_REFUND  = "ESCROW_REFUND";
-    private static final String SPEND_ESCROW   = "SPEND_ESCROW";
     private static final String EARN_RESPONSE  = "EARN_RESPONSE";
     private static final String BURN           = "BURN";
     private static final String SYSTEM_ACCOUNT = "SYSTEM";
@@ -98,8 +101,8 @@ public class CreditServiceImpl extends EgovAbstractServiceImpl implements Credit
             throw PmsiException.paymentRequired("credit.escrow.insufficient",
                     "예치금이 소진되어 정산할 수 없습니다. 필요=" + s.cost() + ", escrow=" + owner.getEscrow());
         }
+        // escrow만 차감 — available 원장에 SPEND_ESCROW를 쓰지 않음(available 불변식)
         creditDAO.debitEscrow(cmd.ownerId(), s.cost());
-        creditDAO.insertLedger(cmd.ownerId(), -s.cost(), SPEND_ESCROW, cmd.responseId());
 
         // 2) [원자 증가] 응답자 +reward — 이 원장 INSERT가 멱등의 실질 방어선(UNIQUE)
         creditDAO.creditAvailable(cmd.respondentId(), s.reward());

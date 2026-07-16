@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import type { QuestionType, QuestionVO } from "@/lib/types";
+import { useEffect, useState } from "react";
+import type { QuestionType, QuestionVO, SectionVO } from "@/lib/types";
 
 const TYPE_LABELS: Record<QuestionType, string> = {
   SHORT_TEXT: "단답형",
@@ -9,34 +9,60 @@ const TYPE_LABELS: Record<QuestionType, string> = {
   RADIO: "객관식(단일선택)",
   CHECKBOX: "체크박스(다중선택)",
   LINEAR_SCALE: "선형 배율",
+  DESCRIPTION: "설명 문구",
+  IMAGE: "이미지",
+  FILE: "파일 업로드",
 };
 
 const isChoice = (t: QuestionType) => t === "RADIO" || t === "CHECKBOX";
-const isText = (t: QuestionType) => t === "SHORT_TEXT" || t === "LONG_TEXT";
+const isContent = (t: QuestionType) => t === "DESCRIPTION" || t === "IMAGE";
 
 interface Props {
   disabled?: boolean;
-  onAdd: (q: Partial<QuestionVO>) => Promise<void>;
+  sections?: SectionVO[];
+  initial?: QuestionVO | null;
+  onSubmit: (q: Partial<QuestionVO>) => Promise<void>;
+  onCancel?: () => void;
 }
 
-/** 질문 추가 폼. 유형별로 필요한 필드만 노출하고, 그 필드만 payload에 담는다. */
-export default function QuestionEditor({ disabled, onAdd }: Props) {
-  const [type, setType] = useState<QuestionType>("RADIO");
-  const [title, setTitle] = useState("");
-  const [required, setRequired] = useState(true);
-  const [options, setOptions] = useState<string[]>(["", ""]);
-  const [scaleMin, setScaleMin] = useState(1);
-  const [scaleMax, setScaleMax] = useState(5);
+export default function QuestionEditor({
+  disabled,
+  sections,
+  initial,
+  onSubmit,
+  onCancel,
+}: Props) {
+  const editing = !!initial;
+  const [type, setType] = useState<QuestionType>(initial?.type ?? "RADIO");
+  const [title, setTitle] = useState(initial?.title ?? "");
+  const [required, setRequired] = useState(initial?.required ?? true);
+  const [options, setOptions] = useState<string[]>(initial?.options ?? ["", ""]);
+  const [scaleMin, setScaleMin] = useState(initial?.scaleMin ?? 1);
+  const [scaleMax, setScaleMax] = useState(initial?.scaleMax ?? 5);
+  const [bodyHtml, setBodyHtml] = useState(initial?.bodyHtml ?? "");
+  const [imageUrl, setImageUrl] = useState(initial?.imageUrl ?? "");
+  const [sectionId, setSectionId] = useState(
+    initial?.sectionId ?? sections?.[0]?.sectionId ?? ""
+  );
+  const [branchRules, setBranchRules] = useState<Record<string, string>>(
+    initial?.branchRules ?? {}
+  );
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const reset = () => {
-    setTitle("");
-    setRequired(true);
-    setOptions(["", ""]);
-    setScaleMin(1);
-    setScaleMax(5);
-  };
+  useEffect(() => {
+    if (!initial) return;
+    setType(initial.type);
+    setTitle(initial.title);
+    setRequired(initial.required);
+    setOptions(initial.options?.length ? [...initial.options] : ["", ""]);
+    setScaleMin(initial.scaleMin ?? 1);
+    setScaleMax(initial.scaleMax ?? 5);
+    setBodyHtml(initial.bodyHtml ?? "");
+    setImageUrl(initial.imageUrl ?? "");
+    setSectionId(initial.sectionId ?? sections?.[0]?.sectionId ?? "");
+    setBranchRules(initial.branchRules ?? {});
+  }, [initial, sections]);
 
   const submit = async () => {
     setError(null);
@@ -44,7 +70,12 @@ export default function QuestionEditor({ disabled, onAdd }: Props) {
       setError("질문 제목을 입력하세요.");
       return;
     }
-    const payload: Partial<QuestionVO> = { type, title: title.trim(), required };
+    const payload: Partial<QuestionVO> = {
+      type,
+      title: title.trim(),
+      required: isContent(type) ? false : required,
+      sectionId: sectionId || undefined,
+    };
     if (isChoice(type)) {
       const opts = options.map((o) => o.trim()).filter(Boolean);
       if (opts.length < 2) {
@@ -61,10 +92,22 @@ export default function QuestionEditor({ disabled, onAdd }: Props) {
       payload.scaleMin = scaleMin;
       payload.scaleMax = scaleMax;
     }
+    if (type === "DESCRIPTION") payload.bodyHtml = bodyHtml;
+    if (type === "IMAGE") {
+      if (!imageUrl.trim()) {
+        setError("이미지 URL을 입력하세요.");
+        return;
+      }
+      payload.imageUrl = imageUrl.trim();
+    }
+    if (type === "RADIO" && Object.keys(branchRules).length > 0) {
+      payload.branchRules = branchRules;
+    } else {
+      payload.branchRules = null;
+    }
     try {
       setBusy(true);
-      await onAdd(payload);
-      reset();
+      await onSubmit(payload);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -72,9 +115,11 @@ export default function QuestionEditor({ disabled, onAdd }: Props) {
     }
   };
 
+  const laterSections = (sections ?? []).filter((s) => s.sectionId !== sectionId);
+
   return (
     <div className="card space-y-3">
-      <h3 className="font-bold">질문 추가</h3>
+      <h3 className="font-bold">{editing ? "질문 수정" : "질문 추가"}</h3>
 
       <div className="grid gap-3 sm:grid-cols-2">
         <div>
@@ -82,6 +127,7 @@ export default function QuestionEditor({ disabled, onAdd }: Props) {
           <select
             className="input"
             value={type}
+            disabled={editing}
             onChange={(e) => setType(e.target.value as QuestionType)}
           >
             {(Object.keys(TYPE_LABELS) as QuestionType[]).map((t) => (
@@ -91,18 +137,47 @@ export default function QuestionEditor({ disabled, onAdd }: Props) {
             ))}
           </select>
         </div>
-        <label className="flex items-end gap-2 pb-2 text-sm">
-          <input
-            type="checkbox"
-            checked={required}
-            onChange={(e) => setRequired(e.target.checked)}
-          />
-          필수 응답
-        </label>
+        {!isContent(type) && type !== "FILE" && (
+          <label className="flex items-end gap-2 pb-2 text-sm">
+            <input
+              type="checkbox"
+              checked={required}
+              onChange={(e) => setRequired(e.target.checked)}
+            />
+            필수 응답
+          </label>
+        )}
+        {type === "FILE" && (
+          <label className="flex items-end gap-2 pb-2 text-sm">
+            <input
+              type="checkbox"
+              checked={required}
+              onChange={(e) => setRequired(e.target.checked)}
+            />
+            필수 첨부
+          </label>
+        )}
       </div>
 
+      {sections && sections.length > 0 && (
+        <div>
+          <label className="label">섹션</label>
+          <select
+            className="input"
+            value={sectionId}
+            onChange={(e) => setSectionId(e.target.value)}
+          >
+            {sections.map((s) => (
+              <option key={s.sectionId} value={s.sectionId}>
+                {s.title}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
       <div>
-        <label className="label">질문 제목</label>
+        <label className="label">{isContent(type) ? "제목" : "질문 제목"}</label>
         <input
           className="input"
           value={title}
@@ -110,6 +185,31 @@ export default function QuestionEditor({ disabled, onAdd }: Props) {
           placeholder="예: 가장 좋아하는 색은?"
         />
       </div>
+
+      {type === "DESCRIPTION" && (
+        <div>
+          <label className="label">설명 본문</label>
+          <textarea
+            className="input"
+            rows={3}
+            value={bodyHtml}
+            onChange={(e) => setBodyHtml(e.target.value)}
+            placeholder="안내 문구를 입력하세요"
+          />
+        </div>
+      )}
+
+      {type === "IMAGE" && (
+        <div>
+          <label className="label">이미지 URL</label>
+          <input
+            className="input"
+            value={imageUrl}
+            onChange={(e) => setImageUrl(e.target.value)}
+            placeholder="https://..."
+          />
+        </div>
+      )}
 
       {isChoice(type) && (
         <div className="space-y-2">
@@ -168,15 +268,52 @@ export default function QuestionEditor({ disabled, onAdd }: Props) {
         </div>
       )}
 
-      {isText(type) && (
-        <p className="text-xs text-slate-400">텍스트형은 별도 옵션 없이 자유 입력을 받습니다.</p>
+      {type === "RADIO" && laterSections.length > 0 && (
+        <div className="space-y-2 rounded-lg bg-slate-50 p-3">
+          <p className="text-sm font-semibold">조건부 분기 (선택 → 뒤 섹션)</p>
+          {options
+            .map((o) => o.trim())
+            .filter(Boolean)
+            .map((opt) => (
+              <div key={opt} className="flex items-center gap-2 text-sm">
+                <span className="w-24 truncate text-slate-600">{opt}</span>
+                <select
+                  className="input"
+                  value={branchRules[opt] ?? ""}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setBranchRules((prev) => {
+                      const next = { ...prev };
+                      if (!v) delete next[opt];
+                      else next[opt] = v;
+                      return next;
+                    });
+                  }}
+                >
+                  <option value="">다음 섹션(기본)</option>
+                  {laterSections.map((s) => (
+                    <option key={s.sectionId} value={s.sectionId}>
+                      {s.title}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ))}
+        </div>
       )}
 
       {error && <p className="rounded bg-red-50 p-2 text-sm text-red-600">{error}</p>}
 
-      <button className="btn-primary" onClick={submit} disabled={disabled || busy}>
-        {busy ? "추가 중…" : "질문 추가"}
-      </button>
+      <div className="flex gap-2">
+        <button className="btn-primary" onClick={submit} disabled={disabled || busy}>
+          {busy ? "저장 중…" : editing ? "수정 저장" : "질문 추가"}
+        </button>
+        {onCancel && (
+          <button type="button" className="btn-ghost" onClick={onCancel}>
+            취소
+          </button>
+        )}
+      </div>
     </div>
   );
 }

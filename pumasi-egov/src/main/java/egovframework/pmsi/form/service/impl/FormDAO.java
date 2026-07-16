@@ -2,19 +2,15 @@ package egovframework.pmsi.form.service.impl;
 
 import egovframework.pmsi.form.service.FormVO;
 import egovframework.pmsi.form.service.QuestionVO;
+import egovframework.pmsi.form.service.SectionVO;
 import org.egovframe.rte.psl.dataaccess.EgovAbstractMapper;
 import org.springframework.stereotype.Repository;
 
+import java.time.OffsetDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-/**
- * 폼 DAO — EgovAbstractMapper 상속(MyBatis).
- *
- * JPA의 cascade가 없으므로 섹션/질문/옵션 저장을 명시적으로 처리한다
- * (전환 설계서 §3.5 학습 포인트: ORM이 숨기던 것을 직접 다룬다).
- */
 @Repository("formDAO")
 public class FormDAO extends EgovAbstractMapper {
 
@@ -22,6 +18,17 @@ public class FormDAO extends EgovAbstractMapper {
 
     public void insertForm(FormVO vo) {
         getSqlSession().insert(NS + "insertForm", vo);
+    }
+
+    public void updateForm(FormVO vo) {
+        getSqlSession().update(NS + "updateForm", vo);
+    }
+
+    public void updateClosesAt(String formId, OffsetDateTime closesAt) {
+        Map<String, Object> p = new HashMap<>();
+        p.put("formId", formId);
+        p.put("closesAt", closesAt);
+        getSqlSession().update(NS + "updateClosesAt", p);
     }
 
     public void insertSection(String sectionId, String formId, int orderIndex, String title) {
@@ -33,16 +40,54 @@ public class FormDAO extends EgovAbstractMapper {
         getSqlSession().insert(NS + "insertSection", p);
     }
 
+    public void updateSection(String formId, String sectionId, String title) {
+        Map<String, Object> p = new HashMap<>();
+        p.put("formId", formId);
+        p.put("sectionId", sectionId);
+        p.put("title", title);
+        getSqlSession().update(NS + "updateSection", p);
+    }
+
+    public void deleteSection(String formId, String sectionId) {
+        Map<String, Object> p = new HashMap<>();
+        p.put("formId", formId);
+        p.put("sectionId", sectionId);
+        getSqlSession().delete(NS + "deleteSection", p);
+    }
+
+    public List<SectionVO> selectSections(String formId) {
+        return getSqlSession().selectList(NS + "selectSections", formId);
+    }
+
+    public SectionVO selectSection(String formId, String sectionId) {
+        Map<String, Object> p = new HashMap<>();
+        p.put("formId", formId);
+        p.put("sectionId", sectionId);
+        return getSqlSession().selectOne(NS + "selectSection", p);
+    }
+
+    public int countSections(String formId) {
+        Integer c = getSqlSession().selectOne(NS + "countSections", formId);
+        return c == null ? 0 : c;
+    }
+
+    public int countQuestionsInSection(String sectionId) {
+        Integer c = getSqlSession().selectOne(NS + "countQuestionsInSection", sectionId);
+        return c == null ? 0 : c;
+    }
+
     public FormVO selectForm(String formId) {
         return getSqlSession().selectOne(NS + "selectForm", formId);
     }
 
-    /** 행 잠금 조회(FOR UPDATE) — 응답 상한 검사/마감의 직렬화용 */
+    public FormVO selectFormByShareToken(String shareToken) {
+        return getSqlSession().selectOne(NS + "selectFormByShareToken", shareToken);
+    }
+
     public FormVO selectFormForUpdate(String formId) {
         return getSqlSession().selectOne(NS + "selectFormForUpdate", formId);
     }
 
-    /** pass 판정 응답 수(escrow 소진 건수) */
     public int countPassResponses(String formId) {
         Integer cnt = getSqlSession().selectOne(NS + "countPassResponses", formId);
         return cnt == null ? 0 : cnt;
@@ -60,13 +105,42 @@ public class FormDAO extends EgovAbstractMapper {
         return getSqlSession().selectOne(NS + "selectFirstSectionId", formId);
     }
 
-    /** publish 시 비용 산출용: 질문 유형 목록 */
     public List<String> selectQuestionTypes(String formId) {
         return getSqlSession().selectList(NS + "selectQuestionTypes", formId);
     }
 
+    public QuestionVO selectQuestion(String formId, String questionId) {
+        Map<String, Object> p = new HashMap<>();
+        p.put("formId", formId);
+        p.put("questionId", questionId);
+        return getSqlSession().selectOne(NS + "selectQuestion", p);
+    }
+
     public void insertQuestion(QuestionVO vo) {
         getSqlSession().insert(NS + "insertQuestion", vo);
+    }
+
+    public void updateQuestion(QuestionVO vo) {
+        getSqlSession().update(NS + "updateQuestion", vo);
+    }
+
+    public void deleteQuestion(String formId, String questionId) {
+        Map<String, Object> p = new HashMap<>();
+        p.put("formId", formId);
+        p.put("questionId", questionId);
+        getSqlSession().delete(NS + "deleteQuestion", p);
+    }
+
+    public void deleteOptions(String questionId) {
+        getSqlSession().delete(NS + "deleteOptions", questionId);
+    }
+
+    public void updateQuestionOrder(String formId, String questionId, int orderIndex) {
+        Map<String, Object> p = new HashMap<>();
+        p.put("formId", formId);
+        p.put("questionId", questionId);
+        p.put("orderIndex", orderIndex);
+        getSqlSession().update(NS + "updateQuestionOrder", p);
     }
 
     public void insertOption(String optionId, String questionId, String label, int orderIndex) {
@@ -78,15 +152,14 @@ public class FormDAO extends EgovAbstractMapper {
         getSqlSession().insert(NS + "insertOption", p);
     }
 
-    /** DRAFT → ACTIVE + 비용 확정 */
-    public void publish(String formId, int cost) {
+    public void publish(String formId, int cost, String shareToken) {
         Map<String, Object> p = new HashMap<>();
         p.put("formId", formId);
         p.put("cost", cost);
+        p.put("shareToken", shareToken);
         getSqlSession().update(NS + "publish", p);
     }
 
-    /** ACTIVE → CLOSED */
     public void close(String formId) {
         getSqlSession().update(NS + "close", formId);
     }

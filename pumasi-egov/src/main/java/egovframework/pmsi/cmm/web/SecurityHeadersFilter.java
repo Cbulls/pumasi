@@ -34,8 +34,12 @@ public class SecurityHeadersFilter extends OncePerRequestFilter {
         response.setHeader("Referrer-Policy", "no-referrer");
         response.setHeader("Cache-Control", "no-store");
 
+        // 파일 업로드(multipart)는 별도 상한(5MB) — JSON API만 256KB 가드
+        String uri = request.getRequestURI();
+        boolean fileUpload = uri != null && uri.contains("/files")
+                && "POST".equalsIgnoreCase(request.getMethod());
         long len = request.getContentLengthLong();
-        if (len > MAX_BODY_BYTES) {
+        if (!fileUpload && len > MAX_BODY_BYTES) {
             response.setStatus(HttpServletResponse.SC_REQUEST_ENTITY_TOO_LARGE); // 413
             response.setContentType("application/json;charset=UTF-8");
             response.getWriter().write(

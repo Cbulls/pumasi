@@ -74,16 +74,21 @@ export default function DashboardPage() {
             {f.description && (
               <p className="line-clamp-2 text-sm text-slate-500">{f.description}</p>
             )}
-            <div className="text-xs text-slate-500">
-              {f.status === "ACTIVE" ? (
-                <>응답 1건당 비용 {f.costCredits} · 보상 +{rewardPreview(f.costCredits)} · 최대 {f.maxResponses}건</>
-              ) : f.status === "CLOSED" ? (
-                <>마감됨 · 최대 {f.maxResponses}건</>
-              ) : (
-                <>초안 · 최대 {f.maxResponses}건</>
+            <div className="text-xs text-slate-500 space-y-1">
+              <div>
+                {f.status === "ACTIVE" ? (
+                  <>응답 1건당 비용 {f.costCredits} · 보상 +{rewardPreview(f.costCredits)} · 최대 {f.maxResponses}건</>
+                ) : f.status === "CLOSED" ? (
+                  <>마감됨 · 최대 {f.maxResponses}건</>
+                ) : (
+                  <>초안 · 최대 {f.maxResponses}건</>
+                )}
+              </div>
+              {f.closesAt && (
+                <div>마감: {new Date(f.closesAt).toLocaleString("ko-KR")}</div>
               )}
             </div>
-            <div className="mt-auto flex gap-2">
+            <div className="mt-auto flex flex-wrap gap-2">
               {f.status === "DRAFT" ? (
                 <Link href={`/forms/new?formId=${f.formId}`} className="btn-primary flex-1">
                   이어서 편집 / 게시
@@ -93,6 +98,19 @@ export default function DashboardPage() {
                   <Link href={`/forms/${f.formId}/results`} className="btn-primary flex-1">
                     결과 보기
                   </Link>
+                  {f.status === "ACTIVE" && f.shareToken && (
+                    <button
+                      type="button"
+                      className="btn-ghost"
+                      onClick={() =>
+                        navigator.clipboard.writeText(
+                          `${window.location.origin}/s/${f.shareToken}`
+                        )
+                      }
+                    >
+                      공유 링크
+                    </button>
+                  )}
                   {f.status === "ACTIVE" && <CloseFormButton form={f} />}
                 </>
               )}

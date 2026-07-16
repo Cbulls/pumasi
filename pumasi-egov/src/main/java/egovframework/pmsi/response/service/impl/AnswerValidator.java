@@ -52,6 +52,9 @@ public class AnswerValidator {
                 case "CHECKBOX"     -> validateCheckbox(q, values, errors);
                 case "SHORT_TEXT", "LONG_TEXT" -> validateText(q, values, errors);
                 case "LINEAR_SCALE" -> validateScale(q, values, errors);
+                case "FILE"         -> validateFile(q, values, errors);
+                case "DESCRIPTION", "IMAGE" ->
+                        errors.add("안내 문항에는 답변을 제출할 수 없습니다: " + q.getTitle());
                 default -> errors.add("지원하지 않는 질문 유형입니다: " + q.getType());
             }
         }
@@ -103,6 +106,12 @@ public class AnswerValidator {
             } catch (PatternSyntaxException ignored) {
                 // 질문 정의의 정규식이 잘못된 경우 답변자를 막지 않는다
             }
+        }
+    }
+
+    private void validateFile(QuestionVO q, List<String> values, List<String> errors) {
+        if (values.size() != 1) {
+            errors.add("파일 문항에는 값이 1개여야 합니다: " + q.getTitle());
         }
     }
 

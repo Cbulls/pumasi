@@ -1,11 +1,13 @@
 package egovframework.pmsi.form.web;
 
+import egovframework.pmsi.cmm.web.CurrentUser;
 import egovframework.pmsi.form.service.FormService;
 import egovframework.pmsi.form.service.FormVO;
 import egovframework.pmsi.form.service.QuestionVO;
+import egovframework.pmsi.form.service.SectionVO;
 
-import egovframework.pmsi.cmm.web.CurrentUser;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotEmpty;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -14,20 +16,6 @@ import javax.annotation.Resource;
 import java.util.List;
 import java.util.Map;
 
-/**
- * 폼 빌더 API.
- *
- *  POST /pmsi/form                     폼 생성            (@CurrentUser)
- *  POST /pmsi/form/{id}/questions      질문 추가          (@CurrentUser, 소유자만)
- *  POST /pmsi/form/{id}/publish        게시(escrow 예치)  (@CurrentUser)
- *  POST /pmsi/form/{id}/close          마감 + 잔여 escrow 환불 (@CurrentUser, 소유자만)
- *  GET  /pmsi/form/{id}                폼 조회
- *  GET  /pmsi/form/{id}/questions      질문 목록
- *  GET  /pmsi/form                     내 폼 목록(토큰 주체 기준)
- *
- * 인증: 로그인 토큰(Bearer)에서 해소한 사용자(@CurrentUser)를 사용. X-User-Id 신뢰 제거.
- * 표준 관례대로 throws Exception 을 컨트롤러까지 전파, 전역 핸들러가 변환.
- */
 @RestController
 @RequestMapping("/pmsi/form")
 public class EgovFormController {
@@ -44,6 +32,14 @@ public class EgovFormController {
         return ResponseEntity.status(HttpStatus.CREATED).body(Map.of("formId", formId));
     }
 
+    @PutMapping("/{formId}")
+    public FormVO updateForm(
+            @PathVariable String formId,
+            @RequestBody FormVO patch,
+            @CurrentUser String userId) throws Exception {
+        return formService.updateForm(formId, patch, userId);
+    }
+
     @PostMapping("/{formId}/questions")
     public ResponseEntity<Void> addQuestion(
             @PathVariable String formId,
@@ -52,6 +48,66 @@ public class EgovFormController {
         questionVO.setFormId(formId);
         formService.addQuestion(questionVO, userId);
         return ResponseEntity.status(HttpStatus.CREATED).build();
+    }
+
+    @PutMapping("/{formId}/questions/{questionId}")
+    public ResponseEntity<Void> updateQuestion(
+            @PathVariable String formId,
+            @PathVariable String questionId,
+            @Valid @RequestBody QuestionVO questionVO,
+            @CurrentUser String userId) throws Exception {
+        formService.updateQuestion(formId, questionId, questionVO, userId);
+        return ResponseEntity.noContent().build();
+    }
+
+    @DeleteMapping("/{formId}/questions/{questionId}")
+    public ResponseEntity<Void> deleteQuestion(
+            @PathVariable String formId,
+            @PathVariable String questionId,
+            @CurrentUser String userId) throws Exception {
+        formService.deleteQuestion(formId, questionId, userId);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PutMapping("/{formId}/questions/reorder")
+    public ResponseEntity<Void> reorderQuestions(
+            @PathVariable String formId,
+            @RequestBody ReorderRequest body,
+            @CurrentUser String userId) throws Exception {
+        formService.reorderQuestions(formId, body.questionIds(), userId);
+        return ResponseEntity.noContent().build();
+    }
+
+    @GetMapping("/{formId}/sections")
+    public List<SectionVO> selectSections(@PathVariable String formId) throws Exception {
+        return formService.selectSectionsWithQuestions(formId);
+    }
+
+    @PostMapping("/{formId}/sections")
+    public ResponseEntity<SectionVO> addSection(
+            @PathVariable String formId,
+            @RequestBody Map<String, String> body,
+            @CurrentUser String userId) throws Exception {
+        SectionVO sec = formService.addSection(formId, body.get("title"), userId);
+        return ResponseEntity.status(HttpStatus.CREATED).body(sec);
+    }
+
+    @PutMapping("/{formId}/sections/{sectionId}")
+    public SectionVO updateSection(
+            @PathVariable String formId,
+            @PathVariable String sectionId,
+            @RequestBody Map<String, String> body,
+            @CurrentUser String userId) throws Exception {
+        return formService.updateSection(formId, sectionId, body.get("title"), userId);
+    }
+
+    @DeleteMapping("/{formId}/sections/{sectionId}")
+    public ResponseEntity<Void> deleteSection(
+            @PathVariable String formId,
+            @PathVariable String sectionId,
+            @CurrentUser String userId) throws Exception {
+        formService.deleteSection(formId, sectionId, userId);
+        return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/{formId}/publish")
@@ -71,8 +127,15 @@ public class EgovFormController {
     }
 
     @GetMapping("/{formId}")
-    public FormVO selectForm(@PathVariable String formId) throws Exception {
-        return formService.selectForm(formId);
+    public FormVO selectForm(
+            @PathVariable String formId,
+            @CurrentUser String userId) throws Exception {
+        FormVO form = formService.selectForm(formId);
+        // shareToken은 소유자만 — 비소유자·피드 조회 시 노출 금지
+        if (userId == null || !userId.equals(form.getOwnerId())) {
+            form.setShareToken(null);
+        }
+        return form;
     }
 
     @GetMapping("/{formId}/questions")
@@ -80,9 +143,10 @@ public class EgovFormController {
         return formService.selectQuestions(formId);
     }
 
-    /** 내 폼 목록 — ownerId 파라미터 신뢰 제거, 토큰 주체 기준으로만 조회(IDOR 방지) */
     @GetMapping
     public List<FormVO> selectFormList(@CurrentUser String userId) throws Exception {
         return formService.selectFormList(userId);
     }
+
+    public record ReorderRequest(@NotEmpty List<String> questionIds) {}
 }

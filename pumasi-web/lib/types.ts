@@ -5,7 +5,10 @@ export type QuestionType =
   | "LONG_TEXT"
   | "RADIO"
   | "CHECKBOX"
-  | "LINEAR_SCALE";
+  | "LINEAR_SCALE"
+  | "DESCRIPTION"
+  | "IMAGE"
+  | "FILE";
 
 export type FormStatus = "DRAFT" | "ACTIVE" | "CLOSED";
 
@@ -17,6 +20,16 @@ export interface FormVO {
   status: FormStatus;
   costCredits: number;
   maxResponses: number;
+  closesAt?: string | null;
+  shareToken?: string | null;
+}
+
+export interface SectionVO {
+  sectionId: string;
+  formId: string;
+  title: string;
+  orderIndex: number;
+  questions?: QuestionVO[];
 }
 
 export interface QuestionVO {
@@ -35,6 +48,9 @@ export interface QuestionVO {
   regex?: string | null;
   scaleMin?: number | null;
   scaleMax?: number | null;
+  bodyHtml?: string | null;
+  imageUrl?: string | null;
+  branchRules?: Record<string, string> | null;
 }
 
 export interface AnswerVO {
@@ -42,7 +58,6 @@ export interface AnswerVO {
   values: string[];
 }
 
-// 소요시간은 서버가 응답 시작(start) 시각 기준으로 계산한다(클라이언트 값 미신뢰)
 export interface SubmitRequest {
   answers: AnswerVO[];
   consentAgreed: boolean;
@@ -75,7 +90,6 @@ export interface ChartItem {
   textResponses: string[];
 }
 
-// 개별 응답 표(구글폼 "개별 보기")
 export interface ResponsesTable {
   questions: { questionId: string; title: string; type: QuestionType }[];
   rows: {

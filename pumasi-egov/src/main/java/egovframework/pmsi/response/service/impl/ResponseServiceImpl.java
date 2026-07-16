@@ -7,12 +7,13 @@ import egovframework.pmsi.credit.service.SettleResult;
 import egovframework.pmsi.form.service.FormService;
 import egovframework.pmsi.form.service.FormVO;
 import egovframework.pmsi.form.service.QuestionVO;
+import egovframework.pmsi.form.service.SectionVO;
+import egovframework.pmsi.form.service.impl.FormValidator;
 import egovframework.pmsi.response.service.AnswerVO;
 import egovframework.pmsi.response.service.ResponseService;
 import egovframework.pmsi.response.service.SubmitRequestVO;
 import egovframework.pmsi.response.service.SubmitResultVO;
 import org.egovframe.rte.fdl.cmmn.EgovAbstractServiceImpl;
-
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -21,22 +22,14 @@ import javax.annotation.Resource;
 import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
-/**
- * 응답 수집 서비스 구현체.
- *
- * ★ 표준 규약: EgovAbstractServiceImpl 상속 + @Resource 이름 기반 주입.
- * ★ 포트 & 어댑터: 폼 조회는 FormService, 크레딧 정산은 CreditService 포트만 안다.
- *
- * 흐름(하나의 트랜잭션):
- *   폼 행 잠금 → 상한(maxResponses) 검사 → 유효성 검증 → 응답/답변 저장
- *   → quality 판정(소요시간은 서버 측정) → pass면 크레딧 정산 → 상한 도달 시 자동 마감.
- *   정산이 실패하면 전체 롤백 → 응답도 저장되지 않는다(원자성).
- */
 @Service("responseService")
 public class ResponseServiceImpl extends EgovAbstractServiceImpl implements ResponseService {
 
@@ -55,10 +48,8 @@ public class ResponseServiceImpl extends EgovAbstractServiceImpl implements Resp
     @Override
     @Transactional
     public void start(String formId, String respondentId) throws Exception {
-        FormVO form = formService.selectForm(formId);   // 없으면 notFound
-        if (!"ACTIVE".equals(form.getStatus())) {
-            throw PmsiException.badRequest("form.not.active", "게시된 설문이 아닙니다.");
-        }
+        FormVO form = formService.selectForm(formId);
+        ensureActiveAccepting(form);
         if (form.getOwnerId().equals(respondentId)) {
             throw PmsiException.forbidden("response.own.form", "본인 설문에는 응답할 수 없습니다.");
         }
@@ -70,10 +61,14 @@ public class ResponseServiceImpl extends EgovAbstractServiceImpl implements Resp
     public SubmitResultVO submit(String formId, String respondentId, SubmitRequestVO req)
             throws Exception {
 
-        // 행 잠금: 동시 제출 간 maxResponses 상한 검사를 직렬화(초과 정산 방지)
-        FormVO form = formService.selectFormForUpdate(formId);   // 없으면 notFound
+        FormVO form = formService.selectFormForUpdate(formId);
         if ("CLOSED".equals(form.getStatus())) {
             throw PmsiException.conflict("form.closed", "마감된 설문입니다.");
+        }
+        // 마감일시 경과 → 자동 마감 후 거절
+        if (form.getClosesAt() != null && !form.getClosesAt().isAfter(OffsetDateTime.now())) {
+            formService.closeIfExpired(formId);
+            throw PmsiException.conflict("form.closed", "응답 기한이 지나 마감된 설문입니다.");
         }
         if (!"ACTIVE".equals(form.getStatus())) {
             throw PmsiException.badRequest("form.not.active", "게시된 설문이 아닙니다.");
@@ -81,17 +76,14 @@ public class ResponseServiceImpl extends EgovAbstractServiceImpl implements Resp
         if (form.getOwnerId().equals(respondentId)) {
             throw PmsiException.forbidden("response.own.form", "본인 설문에는 응답할 수 없습니다.");
         }
-        // 상한: pass 응답이 maxResponses에 도달했으면 받지 않는다(escrow 초과 방지)
         if (formService.countPassResponses(formId) >= form.getMaxResponses()) {
             throw PmsiException.conflict("form.full", "응답 정원이 가득 찼습니다.");
         }
-        // 개인정보 수집·이용 동의 필수(개인정보보호법 준수)
         if (!req.isConsentAgreed()) {
             throw PmsiException.badRequest("response.consent.required",
                     "개인정보 수집·이용에 동의해야 응답을 제출할 수 있습니다.");
         }
 
-        // 소요시간 서버 측정: start()가 기록한 시작 시각 기준(클라이언트 값 신뢰 제거)
         OffsetDateTime startedAt = responseDAO.selectSessionStartedAt(formId, respondentId);
         if (startedAt == null) {
             throw PmsiException.badRequest("response.session.required",
@@ -108,24 +100,38 @@ public class ResponseServiceImpl extends EgovAbstractServiceImpl implements Resp
         Map<String, AnswerVO> answerByQ = new HashMap<>();
         for (AnswerVO a : answers) answerByQ.put(a.getQuestionId(), a);
 
-        // 유효성(받느냐) 1: 필수 문항 응답 확인
+        List<SectionVO> sections = formService.selectSectionsWithQuestions(formId);
+        Set<String> visitedSections = resolveVisitedSections(sections, answerByQ);
+
+        // 분기 경로상 섹션의 필수 문항만 검사(안내 블록 제외)
         for (QuestionVO q : questions) {
+            if (FormValidator.CONTENT_TYPES.contains(q.getType())) continue;
+            if (!visitedSections.contains(q.getSectionId())) continue;
             if (q.isRequired() && isEmpty(answerByQ.get(q.getQuestionId()))) {
                 throw PmsiException.badRequest("response.required",
                         "필수 문항에 응답하지 않았습니다: " + q.getTitle());
             }
         }
-        // 유효성(받느냐) 2: 답변 값이 질문 정의(보기/글자수/범위 등)를 지키는지
-        List<String> valueErrors = answerValidator.validate(questions, answers);
+
+        // 미방문 섹션 답변은 무시하고 검증·저장에서 제외
+        List<AnswerVO> visitedAnswers = new ArrayList<>();
+        for (AnswerVO a : answers) {
+            QuestionVO q = byId.get(a.getQuestionId());
+            if (q == null) continue;
+            if (!visitedSections.contains(q.getSectionId())) continue;
+            if (FormValidator.CONTENT_TYPES.contains(q.getType())) continue;
+            visitedAnswers.add(a);
+        }
+
+        List<String> valueErrors = answerValidator.validate(questions, visitedAnswers);
         if (!valueErrors.isEmpty()) {
             throw PmsiException.badRequest("response.invalid.value",
                     String.join(" / ", valueErrors));
         }
 
-        // 어뷰징(보상하느냐): quality 판정 입력 구성
         List<Integer> singleChoicePositions = new ArrayList<>();
         List<String> textValues = new ArrayList<>();
-        for (AnswerVO a : answers) {
+        for (AnswerVO a : visitedAnswers) {
             QuestionVO q = byId.get(a.getQuestionId());
             if (q == null || a.getValues() == null || a.getValues().isEmpty()) continue;
             String first = a.getValues().get(0);
@@ -135,17 +141,18 @@ public class ResponseServiceImpl extends EgovAbstractServiceImpl implements Resp
                     if (pos >= 0) singleChoicePositions.add(pos);
                 }
                 case "SHORT_TEXT", "LONG_TEXT" -> textValues.add(first);
-                default -> { /* CHECKBOX/LINEAR_SCALE: 판정 입력에서 제외 */ }
+                default -> { }
             }
         }
-        // 주의문항 기능은 미구현 → attentionPassed는 항상 null(클라이언트 입력 제거)
+        int judgeCount = (int) questions.stream()
+                .filter(q -> !FormValidator.CONTENT_TYPES.contains(q.getType()))
+                .filter(q -> visitedSections.contains(q.getSectionId()))
+                .count();
         QualityJudge.Flag flag = qualityJudge.judge(
-                elapsedSeconds, questions.size(),
+                elapsedSeconds, Math.max(1, judgeCount),
                 singleChoicePositions, textValues, null);
 
-        // 저장 (1인 1회: UNIQUE 위반이면 이미 응답)
         String responseId = UUID.randomUUID().toString();
-        // 익명 라벨: 결과/조회에는 실제 respondent_id 대신 이 값만 노출한다.
         String anonLabel = "익명-" + responseId.substring(0, 6);
         try {
             responseDAO.insertResponse(responseId, formId, respondentId,
@@ -153,24 +160,78 @@ public class ResponseServiceImpl extends EgovAbstractServiceImpl implements Resp
         } catch (DuplicateKeyException dup) {
             throw PmsiException.conflict("response.duplicate", "이미 이 설문에 응답했습니다.");
         }
-        for (AnswerVO a : answers) {
-            if (!byId.containsKey(a.getQuestionId()) || a.getValues() == null) continue;
+        for (AnswerVO a : visitedAnswers) {
+            if (a.getValues() == null) continue;
             for (String v : a.getValues()) {
                 responseDAO.insertAnswer(responseId, a.getQuestionId(), v);
             }
         }
         responseDAO.deleteSession(formId, respondentId);
 
-        // pass만 크레딧 정산(reject/hold는 데이터만 저장, 크레딧 미지급)
         long reward = 0;
         if (flag == QualityJudge.Flag.PASS) {
             SettleResult r = creditService.settle(new SettleCommand(
                     form.getOwnerId(), respondentId, form.getCostCredits(), responseId));
             reward = r.reward();
-            // 상한 도달 시 자동 마감(escrow는 정확히 소진되어 환불 없음)
             formService.closeIfFull(formId);
         }
         return new SubmitResultVO(responseId, anonLabel, flag.value(), reward);
+    }
+
+    private void ensureActiveAccepting(FormVO form) throws Exception {
+        if ("CLOSED".equals(form.getStatus())) {
+            throw PmsiException.conflict("form.closed", "마감된 설문입니다.");
+        }
+        if (form.getClosesAt() != null && !form.getClosesAt().isAfter(OffsetDateTime.now())) {
+            formService.closeIfExpired(form.getFormId());
+            throw PmsiException.conflict("form.closed", "응답 기한이 지나 마감된 설문입니다.");
+        }
+        if (!"ACTIVE".equals(form.getStatus())) {
+            throw PmsiException.badRequest("form.not.active", "게시된 설문이 아닙니다.");
+        }
+    }
+
+    /**
+     * RADIO 분기 규칙을 따라 방문 섹션 집합을 계산한다.
+     * 규칙이 없으면 선형으로 다음 섹션으로 진행한다.
+     */
+    private Set<String> resolveVisitedSections(List<SectionVO> sections,
+                                               Map<String, AnswerVO> answerByQ) {
+        if (sections == null || sections.isEmpty()) return Set.of();
+        List<SectionVO> ordered = sections.stream()
+                .sorted(Comparator.comparingInt(SectionVO::getOrderIndex))
+                .toList();
+        Map<String, SectionVO> byId = new HashMap<>();
+        for (SectionVO s : ordered) byId.put(s.getSectionId(), s);
+
+        Set<String> visited = new HashSet<>();
+        SectionVO current = ordered.get(0);
+        int guard = 0;
+        while (current != null && guard++ < ordered.size() + 2) {
+            visited.add(current.getSectionId());
+            String nextId = null;
+            for (QuestionVO q : current.getQuestions()) {
+                if (!"RADIO".equals(q.getType())) continue;
+                if (q.getBranchRules() == null || q.getBranchRules().isEmpty()) continue;
+                AnswerVO a = answerByQ.get(q.getQuestionId());
+                String choice = (a != null && a.getValues() != null && !a.getValues().isEmpty())
+                        ? a.getValues().get(0) : null;
+                if (choice != null && q.getBranchRules().containsKey(choice)) {
+                    nextId = q.getBranchRules().get(choice);
+                } else if (q.getBranchRules().containsKey("_default")) {
+                    nextId = q.getBranchRules().get("_default");
+                }
+                if (nextId != null) break;
+            }
+            if (nextId != null) {
+                current = byId.get(nextId);
+                continue;
+            }
+            // 선형 다음 섹션
+            int idx = ordered.indexOf(current);
+            current = (idx >= 0 && idx + 1 < ordered.size()) ? ordered.get(idx + 1) : null;
+        }
+        return visited;
     }
 
     private boolean isEmpty(AnswerVO a) {

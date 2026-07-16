@@ -38,4 +38,11 @@
            AND respondent_id = #{respondentId}
     </delete>
 
+    <select id="existsByFormAndRespondent" parameterType="map" resultType="int">
+        SELECT COUNT(1)
+          FROM survey_response
+         WHERE form_id = #{formId}
+           AND respondent_id = #{respondentId}
+    </select>
+
 </mapper>

@@ -7,10 +7,10 @@
         <id     property="userId"    column="user_id"/>
         <result property="available" column="available"/>
         <result property="escrow"    column="escrow"/>
+        <!-- version: 변경 카운터(CAS 미사용). 동시성은 FOR UPDATE -->
         <result property="version"   column="version"/>
     </resultMap>
 
-    <!-- 비관적 락: 행을 잠그고 조회(핫 계정 직렬화) -->
     <select id="selectForUpdate" parameterType="string" resultMap="balanceMap">
         SELECT user_id, available, escrow, version
           FROM credit_balance
@@ -24,33 +24,34 @@
          WHERE user_id = #{userId}
     </select>
 
-    <!-- available → escrow 이동(예치). available &lt; 0 은 CHECK 제약이 방어 -->
+    <!-- available → escrow. 부족하면 0행 갱신 → 서비스가 비즈니스 예외 -->
     <update id="moveToEscrow" parameterType="map">
         UPDATE credit_balance
            SET available = available - #{amount},
                escrow    = escrow + #{amount},
                version   = version + 1
          WHERE user_id = #{userId}
+           AND available &gt;= #{amount}
     </update>
 
-    <!-- escrow 차감(응답 확정 시 소진) -->
+    <!-- escrow 차감(응답 확정). 원장 SPEND_ESCROW는 기록하지 않음(available 불변식) -->
     <update id="debitEscrow" parameterType="map">
         UPDATE credit_balance
            SET escrow  = escrow - #{amount},
                version = version + 1
          WHERE user_id = #{userId}
+           AND escrow &gt;= #{amount}
     </update>
 
-    <!-- escrow → available 반환(마감 시 미소진 예치금 환불) -->
     <update id="moveFromEscrow" parameterType="map">
         UPDATE credit_balance
            SET escrow    = escrow - #{amount},
                available = available + #{amount},
                version   = version + 1
          WHERE user_id = #{userId}
+           AND escrow &gt;= #{amount}
     </update>
 
-    <!-- available 증가(적립). 잔액 행이 없으면 생성(UPSERT). -->
     <update id="creditAvailable" parameterType="map">
         INSERT INTO credit_balance(user_id, available, escrow, version)
         VALUES (#{userId}, #{amount}, 0, 0)
@@ -66,7 +67,6 @@
            AND ref_id = #{refId}
     </select>
 
-    <!-- append-only 원장. (reason, ref_id) UNIQUE 위반 = 중복 정산 차단 -->
     <insert id="insertLedger" parameterType="map">
         INSERT INTO credit_ledger(user_id, delta, reason, ref_id, coeff_version)
         VALUES (#{userId}, #{delta}, #{reason}, #{refId}, 1)

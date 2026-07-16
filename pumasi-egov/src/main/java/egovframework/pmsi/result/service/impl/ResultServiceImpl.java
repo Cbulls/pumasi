@@ -4,6 +4,7 @@ import egovframework.pmsi.cmm.PmsiException;
 import egovframework.pmsi.form.service.FormService;
 import egovframework.pmsi.form.service.FormVO;
 import egovframework.pmsi.form.service.QuestionVO;
+import egovframework.pmsi.form.service.impl.FormValidator;
 import egovframework.pmsi.result.service.ResultService;
 import org.egovframe.rte.fdl.cmmn.EgovAbstractServiceImpl;
 
@@ -47,6 +48,7 @@ public class ResultServiceImpl extends EgovAbstractServiceImpl implements Result
 
         List<Map<String, Object>> out = new ArrayList<>();
         for (QuestionVO qvo : questions) {
+            if (FormValidator.CONTENT_TYPES.contains(qvo.getType())) continue;
             QSpec q = toSpec(qvo);
             ChartData cd = aggregator.aggregate(q, responses);
             Map<String, Object> item = new LinkedHashMap<>();
@@ -77,6 +79,7 @@ public class ResultServiceImpl extends EgovAbstractServiceImpl implements Result
         List<QuestionVO> questions = formService.selectQuestions(formId);
         List<Map<String, Object>> qHeaders = new ArrayList<>();
         for (QuestionVO q : questions) {
+            if (FormValidator.CONTENT_TYPES.contains(q.getType())) continue;
             Map<String, Object> h = new LinkedHashMap<>();
             h.put("questionId", q.getQuestionId());
             h.put("title", q.getTitle());
@@ -108,6 +111,46 @@ public class ResultServiceImpl extends EgovAbstractServiceImpl implements Result
         out.put("questions", qHeaders);
         out.put("rows", rows);
         return out;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public String exportCsv(String formId, String userId) throws Exception {
+        Map<String, Object> table = responseTable(formId, userId);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> qHeaders = (List<Map<String, Object>>) table.get("questions");
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> rows = (List<Map<String, Object>>) table.get("rows");
+
+        StringBuilder sb = new StringBuilder();
+        sb.append('\uFEFF'); // Excel 한글 BOM
+        List<String> headers = new ArrayList<>();
+        headers.add("익명ID");
+        headers.add("품질");
+        headers.add("제출시각");
+        for (Map<String, Object> q : qHeaders) headers.add(String.valueOf(q.get("title")));
+        sb.append(headers.stream().map(this::csvEsc).reduce((a, b) -> a + "," + b).orElse(""));
+        sb.append('\n');
+
+        for (Map<String, Object> row : rows) {
+            @SuppressWarnings("unchecked")
+            Map<String, String> answers = (Map<String, String>) row.getOrDefault("answers", Map.of());
+            List<String> cells = new ArrayList<>();
+            cells.add(String.valueOf(row.get("anonLabel")));
+            cells.add(String.valueOf(row.get("qualityFlag")));
+            cells.add(String.valueOf(row.get("submittedAt")));
+            for (Map<String, Object> q : qHeaders) {
+                cells.add(answers.getOrDefault(String.valueOf(q.get("questionId")), ""));
+            }
+            sb.append(cells.stream().map(this::csvEsc).reduce((a, b) -> a + "," + b).orElse(""));
+            sb.append('\n');
+        }
+        return sb.toString();
+    }
+
+    private String csvEsc(String s) {
+        String v = s == null ? "" : s;
+        return "\"" + v.replace("\"", "\"\"") + "\"";
     }
 
     /** pass 답변 행을 응답 단위로 묶어 RespData 목록 구성 */

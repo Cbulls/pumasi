@@ -1,13 +1,21 @@
 server:
   port: 8080
   tomcat:
-    # 폼 POST 본문 상한(추가 방어선). JSON 본문은 SecurityHeadersFilter가 Content-Length로 가드.
-    max-http-form-post-size: 256KB
-    max-swallow-size: 256KB
+    # JSON API는 SecurityHeadersFilter 256KB 가드. 파일 업로드는 multipart 상한 사용.
+    max-http-form-post-size: 6MB
+    max-swallow-size: 6MB
+
+pmsi:
+  upload:
+    dir: ./uploads
 
 spring:
   application:
     name: pumasi-egov
+  servlet:
+    multipart:
+      max-file-size: 5MB
+      max-request-size: 6MB
   datasource:
     url: jdbc:postgresql://localhost:5432/pumasi
     username: pumasi

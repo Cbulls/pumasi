@@ -3,12 +3,16 @@ package egovframework.pmsi.result.web;
 import egovframework.pmsi.cmm.web.CurrentUser;
 import egovframework.pmsi.result.service.ResultService;
 
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import javax.annotation.Resource;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 
@@ -39,5 +43,18 @@ public class EgovResultController {
             @PathVariable String formId,
             @CurrentUser String userId) throws Exception {
         return resultService.responseTable(formId, userId);
+    }
+
+    /** 개별 응답 CSV 다운로드(소유자만, UTF-8 BOM) */
+    @GetMapping("/export.csv")
+    public ResponseEntity<byte[]> exportCsv(
+            @PathVariable String formId,
+            @CurrentUser String userId) throws Exception {
+        String csv = resultService.exportCsv(formId, userId);
+        byte[] bytes = csv.getBytes(StandardCharsets.UTF_8);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"responses.csv\"")
+                .contentType(new MediaType("text", "csv", StandardCharsets.UTF_8))
+                .body(bytes);
     }
 }

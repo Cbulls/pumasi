@@ -1,6 +1,7 @@
 "use client";
 
-import { useResponsesTable } from "@/lib/hooks";
+import { serverCsvUrl, useResponsesTable } from "@/lib/hooks";
+import { useCurrentUser } from "@/context/CurrentUserContext";
 import type { ResponsesTable as ResponsesTableData } from "@/lib/types";
 
 const FLAG_CLS: Record<string, string> = {
@@ -37,7 +38,25 @@ function downloadCsv(table: ResponsesTableData) {
 }
 
 export default function ResponsesTable({ formId, active }: { formId: string; active: boolean }) {
+  const { token } = useCurrentUser();
   const { data, isLoading, isError, error } = useResponsesTable(formId, active);
+
+  const downloadServerCsv = async () => {
+    const res = await fetch(serverCsvUrl(formId), {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!res.ok) {
+      alert("CSV 다운로드에 실패했습니다.");
+      return;
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "responses.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   if (isLoading) return <p className="text-slate-500">개별 응답 불러오는 중…</p>;
   if (isError)
@@ -54,9 +73,14 @@ export default function ResponsesTable({ formId, active }: { formId: string; act
         <p className="text-sm text-slate-500">
           총 {data.rows.length}개 응답 · 응답자는 익명 라벨로만 표시됩니다.
         </p>
-        <button className="btn-ghost" onClick={() => downloadCsv(data)}>
-          CSV 다운로드
-        </button>
+        <div className="flex gap-2">
+          <button className="btn-ghost" onClick={() => downloadCsv(data)}>
+            CSV (브라우저)
+          </button>
+          <button className="btn-primary" onClick={downloadServerCsv}>
+            CSV (서버)
+          </button>
+        </div>
       </div>
 
       <div className="overflow-auto rounded-xl border border-slate-200">

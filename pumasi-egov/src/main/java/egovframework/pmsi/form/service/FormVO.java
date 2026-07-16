@@ -5,13 +5,15 @@ import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
+import java.time.OffsetDateTime;
+
 /**
  * 폼 VO (가변 JavaBean — 표준 관례).
  *
  * status: DRAFT(작성중) → ACTIVE(게시) → CLOSED(마감)
  * costCredits: 응답 1건당 비용. publish 시점에 질문 구성으로 자동 산출(D4).
- *
- * Bean Validation은 입력 바인딩(@Valid) 시에만 적용되며 출력에는 영향 없다.
+ * closesAt: 마감일시(NULL이면 기한 없음).
+ * shareToken: 공개 미리보기용 토큰(publish 시 발급).
  */
 public class FormVO {
     private String formId;
@@ -31,6 +33,9 @@ public class FormVO {
     @Max(value = 100000, message = "최대 응답 수가 너무 큽니다.")
     private int maxResponses = 100;
 
+    private OffsetDateTime closesAt;
+    private String shareToken;
+
     public String getFormId() { return formId; }
     public void setFormId(String formId) { this.formId = formId; }
     public String getOwnerId() { return ownerId; }
@@ -45,4 +50,8 @@ public class FormVO {
     public void setCostCredits(int costCredits) { this.costCredits = costCredits; }
     public int getMaxResponses() { return maxResponses; }
     public void setMaxResponses(int maxResponses) { this.maxResponses = maxResponses; }
+    public OffsetDateTime getClosesAt() { return closesAt; }
+    public void setClosesAt(OffsetDateTime closesAt) { this.closesAt = closesAt; }
+    public String getShareToken() { return shareToken; }
+    public void setShareToken(String shareToken) { this.shareToken = shareToken; }
 }
