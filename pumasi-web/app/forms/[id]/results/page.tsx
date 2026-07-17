@@ -34,10 +34,11 @@ export default function ResultsPage({ params }: { params: { id: string } }) {
         <div>
           <h1 className="text-xl font-extrabold">{form?.title ?? "결과 대시보드"}</h1>
           <p className="text-sm text-slate-500">
-            요약은 성실 응답(pass)만 집계합니다. 결과 열람은 무료입니다.
+            요약·개별 답은 상호 응답으로 열린(unlocked) 성실 응답만 집계합니다. 상대 설문에
+            답해야 그 사람의 응답을 볼 수 있습니다.
           </p>
         </div>
-        <Link href="/" className="btn-ghost">내 설문</Link>
+        <Link href="/home" className="btn-ghost">내 설문</Link>
       </div>
 
       {/* 탭 */}

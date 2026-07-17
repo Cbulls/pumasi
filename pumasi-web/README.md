@@ -12,11 +12,14 @@
 ## 화면
 | 경로 | 설명 |
 |---|---|
-| `/` | 내 설문 대시보드(내 폼 목록, 상태 배지, CTA) |
+| `/` | SEO/AEO 마케팅 랜딩(SSR, FAQ·JSON-LD) |
+| `/guide` | 품앗이 규칙·유의사항 안내 (첫 방문 팝업에서도 링크) |
+| `/home` | 내 설문 대시보드(내 폼 목록, 상태 배지, CTA) |
 | `/forms/new` | 폼 빌더(생성 → 질문 추가 → 게시/예치). `?formId=`로 초안 이어 편집 |
 | `/feed` | 응답 피드(게시된 남의 설문, 보상 미리보기) |
 | `/forms/[id]/respond` | 응답(유형별 입력, 진행률, 소요시간 측정 → 제출 결과) |
 | `/forms/[id]/results` | 결과 대시보드(pass만 집계 차트, 비소유자는 블러 게이트) |
+| `/s/[token]` | 공개 공유 미리보기(동적 OG 메타) |
 
 상단 헤더의 **계정 스위처**로 데모 계정(`u-owner`/`u-alice`/`u-bob`)을 전환합니다. 계정 선택 시 백엔드 `POST /pmsi/auth/login`으로 **로그인 토큰(Bearer)**을 발급받아 모든 요청에 `Authorization` 헤더로 첨부합니다(더 이상 `X-User-Id`를 신뢰하지 않음). 토큰은 `localStorage`에 보관됩니다. 크레딧 배지는 `/pmsi/credit/me`로 본인 잔액을 보여줍니다.
 
@@ -32,10 +35,12 @@ gradle bootRun            # http://localhost:8080
 ## 실행
 
 ```bash
-cp .env.local.example .env.local   # NEXT_PUBLIC_API_BASE=http://localhost:8080
+cp .env.local.example .env.local   # API_BASE·SITE_URL 설정
 npm install
 npm run dev                        # http://localhost:3000
 ```
+
+배포 시 `NEXT_PUBLIC_SITE_URL`을 실제 도메인(예: `https://pumasi.kr`)으로 맞추면 canonical·sitemap·OG가 올바르게 생성됩니다.
 
 > 참고: 이 저장소에는 `node_modules`와 lock 파일이 없습니다. `npm install`로 의존성을 설치하세요.
 > 백엔드 CORS는 `http://localhost:3000` 을 허용하도록 설정돼 있습니다(포트 변경 시 백엔드 [WebConfig.java](../pumasi-egov/src/main/java/egovframework/pmsi/config/WebConfig.java)도 수정).

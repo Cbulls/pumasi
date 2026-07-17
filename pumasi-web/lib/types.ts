@@ -97,5 +97,13 @@ export interface ResponsesTable {
     qualityFlag: "pass" | "hold" | "reject";
     submittedAt: string;
     answers: Record<string, string>;
+    unlocked?: boolean;
+    unlockHint?: string;
+    unlockFormId?: string;
+    unlockFormTitle?: string;
+    unlockShareToken?: string | null;
   }[];
+  unlockedCount?: number;
+  lockedCount?: number;
+  reciprocityRule?: string;
 }

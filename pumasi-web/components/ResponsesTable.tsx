@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { serverCsvUrl, useResponsesTable } from "@/lib/hooks";
 import { useCurrentUser } from "@/context/CurrentUserContext";
 import type { ResponsesTable as ResponsesTableData } from "@/lib/types";
@@ -12,13 +13,20 @@ const FLAG_CLS: Record<string, string> = {
 
 function buildCsv(table: ResponsesTableData): string {
   const esc = (s: unknown) => `"${String(s ?? "").replace(/"/g, '""')}"`;
-  const header = ["익명ID", "품질", "제출시각", ...table.questions.map((q) => q.title)];
+  const header = [
+    "익명ID",
+    "품질",
+    "제출시각",
+    "열림",
+    ...table.questions.map((q) => q.title),
+  ];
   const lines = [header.map(esc).join(",")];
   for (const row of table.rows) {
     const cells = [
       row.anonLabel,
       row.qualityFlag,
       row.submittedAt,
+      row.unlocked ? "Y" : "N",
       ...table.questions.map((q) => row.answers[q.questionId] ?? ""),
     ];
     lines.push(cells.map(esc).join(","));
@@ -27,7 +35,6 @@ function buildCsv(table: ResponsesTableData): string {
 }
 
 function downloadCsv(table: ResponsesTableData) {
-  // BOM 추가(엑셀에서 한글 깨짐 방지)
   const blob = new Blob(["\uFEFF" + buildCsv(table)], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -69,10 +76,15 @@ export default function ResponsesTable({ formId, active }: { formId: string; act
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-slate-500">
-          총 {data.rows.length}개 응답 · 응답자는 익명 라벨로만 표시됩니다.
-        </p>
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="text-sm text-slate-500">
+          <p>
+            총 {data.rows.length}개 · 열림 {data.unlockedCount ?? 0} · 잠김 {data.lockedCount ?? 0}
+          </p>
+          {data.reciprocityRule && (
+            <p className="mt-1 text-xs text-slate-400">{data.reciprocityRule}</p>
+          )}
+        </div>
         <div className="flex gap-2">
           <button className="btn-ghost" onClick={() => downloadCsv(data)}>
             CSV (브라우저)
@@ -88,6 +100,7 @@ export default function ResponsesTable({ formId, active }: { formId: string; act
           <thead className="bg-slate-50">
             <tr className="text-left">
               <th className="sticky left-0 z-10 bg-slate-50 px-3 py-2 font-semibold">익명 ID</th>
+              <th className="px-3 py-2 font-semibold">상태</th>
               <th className="px-3 py-2 font-semibold">품질</th>
               <th className="px-3 py-2 font-semibold whitespace-nowrap">제출시각</th>
               {data.questions.map((q) => (
@@ -98,22 +111,55 @@ export default function ResponsesTable({ formId, active }: { formId: string; act
             </tr>
           </thead>
           <tbody>
-            {data.rows.map((row, i) => (
-              <tr key={i} className="border-t border-slate-100">
-                <td className="sticky left-0 z-10 bg-white px-3 py-2 font-medium">{row.anonLabel}</td>
-                <td className="px-3 py-2">
-                  <span className={`badge ${FLAG_CLS[row.qualityFlag] ?? "bg-slate-100 text-slate-600"}`}>
-                    {row.qualityFlag}
-                  </span>
-                </td>
-                <td className="px-3 py-2 whitespace-nowrap text-slate-500">{row.submittedAt}</td>
-                {data.questions.map((q) => (
-                  <td key={q.questionId} className="px-3 py-2">
-                    {row.answers[q.questionId] ?? <span className="text-slate-300">-</span>}
+            {data.rows.map((row, i) => {
+              const locked = row.unlocked === false;
+              return (
+                <tr
+                  key={i}
+                  className={`border-t border-slate-100 ${locked ? "bg-slate-50/80" : ""}`}
+                >
+                  <td className="sticky left-0 z-10 bg-inherit px-3 py-2 font-medium">
+                    {row.anonLabel}
                   </td>
-                ))}
-              </tr>
-            ))}
+                  <td className="px-3 py-2">
+                    {locked ? (
+                      <div className="space-y-1">
+                        <span className="badge bg-amber-100 text-amber-800">잠김</span>
+                        {row.unlockFormId ? (
+                          <Link
+                            href={`/forms/${row.unlockFormId}/respond`}
+                            className="block text-xs font-semibold text-brand hover:underline"
+                          >
+                            상대 설문 응답하기
+                            {row.unlockFormTitle ? ` · ${row.unlockFormTitle}` : ""}
+                          </Link>
+                        ) : (
+                          <p className="text-xs text-slate-500">{row.unlockHint}</p>
+                        )}
+                      </div>
+                    ) : (
+                      <span className="badge bg-emerald-100 text-emerald-700">열림</span>
+                    )}
+                  </td>
+                  <td className="px-3 py-2">
+                    <span
+                      className={`badge ${FLAG_CLS[row.qualityFlag] ?? "bg-slate-100 text-slate-600"}`}
+                    >
+                      {row.qualityFlag}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2 whitespace-nowrap text-slate-500">{row.submittedAt}</td>
+                  {data.questions.map((q) => (
+                    <td
+                      key={q.questionId}
+                      className={`px-3 py-2 ${locked ? "italic text-slate-400 blur-[2px] select-none" : ""}`}
+                    >
+                      {row.answers[q.questionId] ?? <span className="text-slate-300">-</span>}
+                    </td>
+                  ))}
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>

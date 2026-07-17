@@ -17,15 +17,18 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
- * 결과 조회 서비스 구현체.
+ * 결과 조회 서비스.
  *
- * ★ 표준 규약: EgovAbstractServiceImpl 상속 + @Resource 이름 기반 주입.
- * ★ 집계는 순수 ResultAggregator 재사용. DAO는 pass 응답만 로드.
+ * 품앗이 1:1 언락: A가 B 설문에 응답하면, B는 A의 설문에 응답해야 A의 답·집계를 본다.
+ * 크레딧 예치(게시)와 병행. 응답자 ID는 API에 노출하지 않는다.
  */
 @Service("resultService")
 public class ResultServiceImpl extends EgovAbstractServiceImpl implements ResultService {
+
+    private static final String LOCKED_PLACEHOLDER = "(잠김 — 상대 설문에 응답하면 열립니다)";
 
     @Resource(name = "resultDAO")
     private ResultDAO resultDAO;
@@ -38,13 +41,10 @@ public class ResultServiceImpl extends EgovAbstractServiceImpl implements Result
     @Override
     @Transactional(readOnly = true)
     public List<Map<String, Object>> chartData(String formId, String userId) throws Exception {
-        FormVO form = formService.selectForm(formId);        // 없으면 notFound
-        if (!form.getOwnerId().equals(userId)) {
-            throw PmsiException.forbidden("result.forbidden", "본인 설문의 결과만 볼 수 있습니다.");
-        }
+        FormVO form = requireOwner(formId, userId);
 
         List<QuestionVO> questions = formService.selectQuestions(formId);
-        List<RespData> responses = loadPassResponses(formId);
+        List<RespData> responses = loadUnlockedPassResponses(formId, form.getOwnerId());
 
         List<Map<String, Object>> out = new ArrayList<>();
         for (QuestionVO qvo : questions) {
@@ -54,7 +54,7 @@ public class ResultServiceImpl extends EgovAbstractServiceImpl implements Result
             Map<String, Object> item = new LinkedHashMap<>();
             item.put("questionId", q.id);
             item.put("title", qvo.getTitle());
-            item.put("type", q.type);
+            item.put("type", qvo.getType());
             item.put("chartType", cd.chartType);
             item.put("counts", cd.counts);
             item.put("ratios", cd.ratios);
@@ -70,12 +70,10 @@ public class ResultServiceImpl extends EgovAbstractServiceImpl implements Result
     @Override
     @Transactional(readOnly = true)
     public Map<String, Object> responseTable(String formId, String userId) throws Exception {
-        FormVO form = formService.selectForm(formId);
-        if (!form.getOwnerId().equals(userId)) {
-            throw PmsiException.forbidden("result.forbidden", "본인 설문의 결과만 볼 수 있습니다.");
-        }
+        FormVO form = requireOwner(formId, userId);
+        String ownerId = form.getOwnerId();
+        Set<String> unlockedIds = resultDAO.selectUnlockedRespondentIds(ownerId);
 
-        // 질문 헤더(열)
         List<QuestionVO> questions = formService.selectQuestions(formId);
         List<Map<String, Object>> qHeaders = new ArrayList<>();
         for (QuestionVO q : questions) {
@@ -87,29 +85,58 @@ public class ResultServiceImpl extends EgovAbstractServiceImpl implements Result
             qHeaders.add(h);
         }
 
-        // 응답별 답변 조립: responseId → (questionId → "값1, 값2")
         Map<String, Map<String, String>> answersByResponse = new HashMap<>();
         for (AnswerRow row : resultDAO.selectAllAnswers(formId)) {
             Map<String, String> cells =
                     answersByResponse.computeIfAbsent(row.getResponseId(), k -> new HashMap<>());
             cells.merge(row.getQuestionId(), row.getValue(),
-                    (prev, next) -> prev + ", " + next);   // 다중선택은 콤마로 합침
+                    (prev, next) -> prev + ", " + next);
         }
 
-        // 행(응답) — respondent_id는 담지 않는다(익명 라벨만)
+        int unlockedCount = 0;
+        int lockedCount = 0;
         List<Map<String, Object>> rows = new ArrayList<>();
         for (ResponseRow r : resultDAO.selectResponses(formId)) {
+            boolean unlocked = r.getRespondentId() != null
+                    && unlockedIds.contains(r.getRespondentId());
+            if (unlocked) unlockedCount++;
+            else lockedCount++;
+
             Map<String, Object> row = new LinkedHashMap<>();
             row.put("anonLabel", r.getAnonLabel());
             row.put("qualityFlag", r.getQualityFlag());
             row.put("submittedAt", r.getSubmittedAt());
-            row.put("answers", answersByResponse.getOrDefault(r.getResponseId(), Map.of()));
+            row.put("unlocked", unlocked);
+
+            if (unlocked) {
+                row.put("answers", answersByResponse.getOrDefault(r.getResponseId(), Map.of()));
+            } else {
+                Map<String, String> redacted = new HashMap<>();
+                for (Map<String, Object> q : qHeaders) {
+                    redacted.put(String.valueOf(q.get("questionId")), LOCKED_PLACEHOLDER);
+                }
+                row.put("answers", redacted);
+
+                UnlockTarget target = resultDAO.selectUnlockTarget(ownerId, r.getRespondentId());
+                if (target != null) {
+                    row.put("unlockFormId", target.getFormId());
+                    row.put("unlockFormTitle", target.getTitle());
+                    row.put("unlockShareToken", target.getShareToken());
+                    row.put("unlockHint", "이 응답자의 설문에 답하면 내용이 열립니다.");
+                } else {
+                    row.put("unlockHint", "상대가 게시 중인 설문이 없어 아직 열 수 없습니다.");
+                }
+            }
             rows.add(row);
         }
 
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("questions", qHeaders);
         out.put("rows", rows);
+        out.put("unlockedCount", unlockedCount);
+        out.put("lockedCount", lockedCount);
+        out.put("reciprocityRule",
+                "상대가 내 설문에 응답했으면, 그 사람의 설문에 응답해야 그 답을 볼 수 있습니다.");
         return out;
     }
 
@@ -123,11 +150,12 @@ public class ResultServiceImpl extends EgovAbstractServiceImpl implements Result
         List<Map<String, Object>> rows = (List<Map<String, Object>>) table.get("rows");
 
         StringBuilder sb = new StringBuilder();
-        sb.append('\uFEFF'); // Excel 한글 BOM
+        sb.append('\uFEFF');
         List<String> headers = new ArrayList<>();
         headers.add("익명ID");
         headers.add("품질");
         headers.add("제출시각");
+        headers.add("열림");
         for (Map<String, Object> q : qHeaders) headers.add(String.valueOf(q.get("title")));
         sb.append(headers.stream().map(this::csvEsc).reduce((a, b) -> a + "," + b).orElse(""));
         sb.append('\n');
@@ -139,6 +167,7 @@ public class ResultServiceImpl extends EgovAbstractServiceImpl implements Result
             cells.add(String.valueOf(row.get("anonLabel")));
             cells.add(String.valueOf(row.get("qualityFlag")));
             cells.add(String.valueOf(row.get("submittedAt")));
+            cells.add(Boolean.TRUE.equals(row.get("unlocked")) ? "Y" : "N");
             for (Map<String, Object> q : qHeaders) {
                 cells.add(answers.getOrDefault(String.valueOf(q.get("questionId")), ""));
             }
@@ -148,14 +177,21 @@ public class ResultServiceImpl extends EgovAbstractServiceImpl implements Result
         return sb.toString();
     }
 
+    private FormVO requireOwner(String formId, String userId) throws Exception {
+        FormVO form = formService.selectForm(formId);
+        if (!form.getOwnerId().equals(userId)) {
+            throw PmsiException.forbidden("result.forbidden", "본인 설문의 결과만 볼 수 있습니다.");
+        }
+        return form;
+    }
+
     private String csvEsc(String s) {
         String v = s == null ? "" : s;
         return "\"" + v.replace("\"", "\"\"") + "\"";
     }
 
-    /** pass 답변 행을 응답 단위로 묶어 RespData 목록 구성 */
-    private List<RespData> loadPassResponses(String formId) {
-        List<AnswerRow> rows = resultDAO.selectPassAnswers(formId);
+    private List<RespData> loadUnlockedPassResponses(String formId, String ownerId) {
+        List<AnswerRow> rows = resultDAO.selectPassAnswersUnlocked(formId, ownerId);
         Map<String, RespData> byResponse = new LinkedHashMap<>();
         for (AnswerRow row : rows) {
             RespData rd = byResponse.computeIfAbsent(row.getResponseId(),

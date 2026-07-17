@@ -50,7 +50,7 @@ function BuilderInner() {
   const [formId, setFormId] = useState(search.get("formId") ?? "");
 
   return formId ? (
-    <Builder formId={formId} onPublished={() => router.push("/")} />
+    <Builder formId={formId} onPublished={() => router.push("/home")} />
   ) : (
     <CreateForm onCreated={setFormId} />
   );
@@ -395,7 +395,7 @@ function Builder({ formId, onPublished }: { formId: string; onPublished: () => v
             <Link href={`/forms/${formId}/results`} className="btn-ghost">
               결과
             </Link>
-            <Link href="/" className="btn-primary">
+            <Link href="/home" className="btn-primary">
               대시보드
             </Link>
           </div>

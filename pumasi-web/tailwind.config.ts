@@ -13,6 +13,18 @@ const config: Config = {
           dark: "#4338ca",
           light: "#eef2ff",
         },
+        ink: {
+          DEFAULT: "#0f172a",
+          soft: "#1e293b",
+        },
+        accent: {
+          DEFAULT: "#0ea5e9",
+          soft: "#e0f2fe",
+        },
+      },
+      fontFamily: {
+        display: ["var(--font-display)", "Noto Sans KR", "sans-serif"],
+        sans: ["var(--font-sans)", "Noto Sans KR", "sans-serif"],
       },
     },
   },

@@ -174,7 +174,7 @@ export default function RespondPage({ params }: { params: { id: string } }) {
             <Link href="/feed" className="btn-primary">
               피드로 돌아가기
             </Link>
-            <Link href="/" className="btn-ghost">
+            <Link href="/home" className="btn-ghost">
               내 설문
             </Link>
           </div>
@@ -196,7 +196,7 @@ export default function RespondPage({ params }: { params: { id: string } }) {
             <Link href="/feed" className="btn-primary">
               피드로 돌아가기
             </Link>
-            <Link href="/" className="btn-ghost">
+            <Link href="/home" className="btn-ghost">
               내 설문
             </Link>
           </div>

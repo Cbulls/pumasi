@@ -12,7 +12,8 @@ export default function FeedPage() {
       <div>
         <h1 className="text-xl font-extrabold">응답 피드</h1>
         <p className="text-sm text-slate-500">
-          다른 사람의 설문에 응답하고 크레딧을 받으세요. (상단에서 응답자 계정으로 전환)
+          다른 설문에 응답하면 크레딧을 받고, 내게 응답한 사람의 설문이 위에 우선 노출됩니다.
+          그 설문에 답해야 내 결과에서 그 사람의 응답이 열립니다.
         </p>
       </div>
 

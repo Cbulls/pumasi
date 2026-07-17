@@ -3,10 +3,8 @@
 import Link from "next/link";
 
 /**
- * 결과 게이트(요구사항 와이어프레임 ②) 감성의 블러 오버레이.
- *
- * 참고: 백엔드 D7 상 결과 열람은 무료이며, 이 화면은 "본인 설문이 아닐 때"의
- * 접근 차단(403)을 시각적으로 표현한다(크레딧 게이트는 데모 표기).
+ * 비소유자 결과 접근(403) 시각화.
+ * 소유자 결과의 행 단위 잠금은 ResponsesTable에서 상호 응답 언락으로 처리한다.
  */
 export default function GateBlur({ message }: { message: string }) {
   return (
@@ -31,7 +29,7 @@ export default function GateBlur({ message }: { message: string }) {
         <p className="max-w-sm text-sm font-medium text-slate-700">{message}</p>
         <div className="flex gap-2">
           <Link href="/feed" className="btn-primary">응답 피드로 가기</Link>
-          <Link href="/" className="btn-ghost">내 설문</Link>
+          <Link href="/home" className="btn-ghost">내 설문</Link>
         </div>
       </div>
     </div>

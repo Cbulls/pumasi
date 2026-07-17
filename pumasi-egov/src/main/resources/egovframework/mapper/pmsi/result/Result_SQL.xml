@@ -3,7 +3,32 @@
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="resultMapper">
 
-    <!-- 집계는 pass만: quality_flag = 'pass' 인 응답의 답변만 조회 -->
+    <!--
+      품앗이 1:1 언락:
+        A가 B 설문에 응답 → B는 A의 설문에 응답해야 A의 답(및 집계)을 본다.
+      unlocked = owner가 respondent 소유의 어떤 설문에든 응답을 제출한 경우.
+    -->
+
+    <!-- 집계: pass + 상호응답 언락된 응답만 -->
+    <select id="selectPassAnswersUnlocked" parameterType="map"
+            resultType="egovframework.pmsi.result.service.impl.AnswerRow">
+        SELECT a.response_id AS response_id,
+               a.question_id AS question_id,
+               a.value       AS value
+          FROM survey_response r
+          JOIN survey_answer a ON a.response_id = r.id
+         WHERE r.form_id = #{formId}
+           AND r.quality_flag = 'pass'
+           AND EXISTS (
+                SELECT 1
+                  FROM survey_response mine
+                  JOIN form mf ON mf.id = mine.form_id
+                 WHERE mine.respondent_id = #{ownerId}
+                   AND mf.owner_id = r.respondent_id
+           )
+    </select>
+
+    <!-- 하위 호환용(미사용 가능). pass 전체 -->
     <select id="selectPassAnswers" parameterType="string"
             resultType="egovframework.pmsi.result.service.impl.AnswerRow">
         SELECT a.response_id AS response_id,
@@ -15,10 +40,10 @@
            AND r.quality_flag = 'pass'
     </select>
 
-    <!-- 개별 응답 메타(익명화: respondent_id 제외) -->
     <select id="selectResponses" parameterType="string"
             resultType="egovframework.pmsi.result.service.impl.ResponseRow">
         SELECT id                                          AS response_id,
+               respondent_id                               AS respondent_id,
                anon_label                                  AS anon_label,
                quality_flag                                AS quality_flag,
                to_char(submitted_at, 'YYYY-MM-DD HH24:MI') AS submitted_at
@@ -27,7 +52,6 @@
          ORDER BY submitted_at ASC
     </select>
 
-    <!-- 전체 quality의 답변 행 -->
     <select id="selectAllAnswers" parameterType="string"
             resultType="egovframework.pmsi.result.service.impl.AnswerRow">
         SELECT a.response_id AS response_id,
@@ -36,6 +60,34 @@
           FROM survey_response r
           JOIN survey_answer a ON a.response_id = r.id
          WHERE r.form_id = #{formId}
+    </select>
+
+    <!-- owner가 응답한 설문들의 소유자 = 언락된 응답자 ID 집합 -->
+    <select id="selectUnlockedRespondentIds" parameterType="string" resultType="string">
+        SELECT DISTINCT f.owner_id
+          FROM survey_response r
+          JOIN form f ON f.id = r.form_id
+         WHERE r.respondent_id = #{ownerId}
+    </select>
+
+    <!-- 잠금 해제용: 상대 ACTIVE 설문 중 내가 아직 안 한 것 1건 -->
+    <select id="selectUnlockTarget" parameterType="map"
+            resultType="egovframework.pmsi.result.service.impl.UnlockTarget">
+        SELECT f.id          AS form_id,
+               f.title       AS title,
+               f.share_token AS share_token
+          FROM form f
+         WHERE f.owner_id = #{respondentId}
+           AND f.status = 'ACTIVE'
+           AND (f.closes_at IS NULL OR f.closes_at > now())
+           AND NOT EXISTS (
+                SELECT 1
+                  FROM survey_response r
+                 WHERE r.form_id = f.id
+                   AND r.respondent_id = #{ownerId}
+           )
+         ORDER BY f.created_at DESC
+         LIMIT 1
     </select>
 
 </mapper>

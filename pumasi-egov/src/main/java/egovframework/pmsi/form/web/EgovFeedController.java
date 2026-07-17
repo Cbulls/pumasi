@@ -14,9 +14,8 @@ import java.util.List;
 /**
  * 응답 피드 API.
  *
- *  GET /pmsi/feed   게시된 남의 설문 목록(본인 제외, 최신순)  (@CurrentUser = viewer)
- *
- * 하이브리드 랭킹(FeedRanker)은 범위 밖 — 스켈레톤은 최신순 단순 목록.
+ *  GET /pmsi/feed   게시된 남의 설문 목록 (@CurrentUser = viewer)
+ *  정렬: 내 설문에 응답해준 사람의 설문 우선(1:1 부스트) → 최신순
  */
 @RestController
 @RequestMapping("/pmsi/feed")

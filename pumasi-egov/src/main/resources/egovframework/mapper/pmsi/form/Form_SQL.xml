@@ -138,6 +138,7 @@
          ORDER BY created_at DESC
     </select>
 
+    <!-- 1:1 부스트: 내 설문에 응답해준 사람의 설문을 상단 우선 -->
     <select id="selectActiveFeed" parameterType="string" resultMap="formMap">
         SELECT f.id, f.owner_id, f.title, f.description, f.status, f.cost_credits, f.max_responses,
                f.closes_at, f.share_token
@@ -151,7 +152,15 @@
                  WHERE r.form_id = f.id
                    AND r.respondent_id = #{viewerId}
            )
-         ORDER BY f.created_at DESC
+         ORDER BY
+           CASE WHEN EXISTS (
+                SELECT 1
+                  FROM survey_response r2
+                  JOIN form myf ON myf.id = r2.form_id
+                 WHERE myf.owner_id = #{viewerId}
+                   AND r2.respondent_id = f.owner_id
+           ) THEN 0 ELSE 1 END,
+           f.created_at DESC
     </select>
 
     <select id="selectFirstSectionId" parameterType="string" resultType="string">
