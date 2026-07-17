@@ -45,4 +45,30 @@
            AND respondent_id = #{respondentId}
     </select>
 
+    <!-- HOLD 검토(소유자 큐): 응답 메타 -->
+    <select id="selectResponseMeta" parameterType="map" resultType="map">
+        SELECT id            AS "responseId",
+               respondent_id AS "respondentId",
+               quality_flag  AS "qualityFlag"
+          FROM survey_response
+         WHERE id = #{responseId}
+           AND form_id = #{formId}
+    </select>
+
+    <update id="updateQualityFlag" parameterType="map">
+        UPDATE survey_response
+           SET quality_flag = #{qualityFlag}
+         WHERE id = #{responseId}
+           AND form_id = #{formId}
+    </update>
+
+    <!-- 가드레일: 최근 응답 품질 플래그(최신순) -->
+    <select id="selectRecentQualityFlags" parameterType="map" resultType="string">
+        SELECT quality_flag
+          FROM survey_response
+         WHERE form_id = #{formId}
+         ORDER BY submitted_at DESC
+         LIMIT #{limit}
+    </select>
+
 </mapper>

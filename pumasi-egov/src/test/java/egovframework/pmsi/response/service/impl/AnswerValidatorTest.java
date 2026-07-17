@@ -62,6 +62,32 @@ class AnswerValidatorTest {
     }
 
     @Test
+    void dropdown_validatesLikeRadio() {
+        QuestionVO dd = question("q1", "DROPDOWN");
+        dd.setOptions(List.of("서울", "부산"));
+        assertTrue(validator.validate(List.of(dd), List.of(answer("q1", "서울"))).isEmpty());
+        assertFalse(validator.validate(List.of(dd), List.of(answer("q1", "대전"))).isEmpty());
+    }
+
+    @Test
+    void rating_validatesRange() {
+        QuestionVO r = question("q1", "RATING");
+        r.setScaleMin(1);
+        r.setScaleMax(5);
+        assertTrue(validator.validate(List.of(r), List.of(answer("q1", "3"))).isEmpty());
+        assertFalse(validator.validate(List.of(r), List.of(answer("q1", "9"))).isEmpty());
+        assertFalse(validator.validate(List.of(r), List.of(answer("q1", "별점"))).isEmpty());
+    }
+
+    @Test
+    void date_requiresIsoFormat() {
+        QuestionVO d = question("q1", "DATE");
+        assertTrue(validator.validate(List.of(d), List.of(answer("q1", "2026-07-17"))).isEmpty());
+        assertFalse(validator.validate(List.of(d), List.of(answer("q1", "2026/07/17"))).isEmpty());
+        assertFalse(validator.validate(List.of(d), List.of(answer("q1", "내일"))).isEmpty());
+    }
+
+    @Test
     void radio_valueNotInOptions_error() {
         QuestionVO radio = question("q1", "RADIO");
         radio.setOptions(List.of("빨강", "파랑"));

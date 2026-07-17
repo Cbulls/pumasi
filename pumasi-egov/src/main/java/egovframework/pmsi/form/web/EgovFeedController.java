@@ -6,6 +6,7 @@ import egovframework.pmsi.form.service.FormVO;
 
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import javax.annotation.Resource;
@@ -14,8 +15,9 @@ import java.util.List;
 /**
  * 응답 피드 API.
  *
- *  GET /pmsi/feed   게시된 남의 설문 목록 (@CurrentUser = viewer)
- *  정렬: 내 설문에 응답해준 사람의 설문 우선(1:1 부스트) → 최신순
+ *  GET /pmsi/feed?page=0&size=20   게시된 남의 설문 목록 (@CurrentUser = viewer)
+ *  필터: 정원 미달 ACTIVE만.
+ *  정렬: 1:1 부스트(내 설문에 응답해준 사람) → 채움률 낮은 순 → 최신순
  */
 @RestController
 @RequestMapping("/pmsi/feed")
@@ -25,7 +27,10 @@ public class EgovFeedController {
     private FormService formService;
 
     @GetMapping
-    public List<FormVO> feed(@CurrentUser String userId) throws Exception {
-        return formService.selectActiveFeed(userId);
+    public List<FormVO> feed(
+            @CurrentUser String userId,
+            @RequestParam(value = "page", defaultValue = "0") int page,
+            @RequestParam(value = "size", defaultValue = "20") int size) throws Exception {
+        return formService.selectActiveFeed(userId, page, size);
     }
 }

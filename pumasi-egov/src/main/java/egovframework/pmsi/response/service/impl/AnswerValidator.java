@@ -20,10 +20,11 @@ import java.util.regex.PatternSyntaxException;
  * 여기서는 값이 존재하는 답변만 유형별 규칙을 적용한다.
  *
  *  - 공통       : 존재하지 않는 questionId 거부, 같은 문항 중복 답변 거부
- *  - RADIO      : 값 1개, 보기 중 하나여야 함
+ *  - RADIO/DROPDOWN : 값 1개, 보기 중 하나여야 함
  *  - CHECKBOX   : 모든 값이 보기에 속함, 값 중복 금지, min/maxSelect 준수
  *  - 텍스트     : 값 1개, min/maxLength·정규식(regex) 준수
- *  - LINEAR_SCALE: 값 1개, 정수, scaleMin~scaleMax 범위
+ *  - LINEAR_SCALE/RATING: 값 1개, 정수, scaleMin~scaleMax 범위
+ *  - DATE       : 값 1개, ISO 날짜(yyyy-MM-dd)
  */
 public class AnswerValidator {
 
@@ -48,10 +49,11 @@ public class AnswerValidator {
             if (values.isEmpty()) continue;   // 미응답 — 필수 여부는 호출측이 검사
 
             switch (q.getType()) {
-                case "RADIO"        -> validateRadio(q, values, errors);
+                case "RADIO", "DROPDOWN" -> validateRadio(q, values, errors);
                 case "CHECKBOX"     -> validateCheckbox(q, values, errors);
                 case "SHORT_TEXT", "LONG_TEXT" -> validateText(q, values, errors);
-                case "LINEAR_SCALE" -> validateScale(q, values, errors);
+                case "LINEAR_SCALE", "RATING" -> validateScale(q, values, errors);
+                case "DATE"         -> validateDate(q, values, errors);
                 case "FILE"         -> validateFile(q, values, errors);
                 case "DESCRIPTION", "IMAGE" ->
                         errors.add("안내 문항에는 답변을 제출할 수 없습니다: " + q.getTitle());
@@ -112,6 +114,18 @@ public class AnswerValidator {
     private void validateFile(QuestionVO q, List<String> values, List<String> errors) {
         if (values.size() != 1) {
             errors.add("파일 문항에는 값이 1개여야 합니다: " + q.getTitle());
+        }
+    }
+
+    private void validateDate(QuestionVO q, List<String> values, List<String> errors) {
+        if (values.size() != 1) {
+            errors.add("날짜 문항에는 값이 1개여야 합니다: " + q.getTitle());
+            return;
+        }
+        try {
+            java.time.LocalDate.parse(values.get(0).trim());
+        } catch (java.time.format.DateTimeParseException e) {
+            errors.add("날짜 형식(yyyy-MM-dd)이 올바르지 않습니다: " + q.getTitle());
         }
     }
 

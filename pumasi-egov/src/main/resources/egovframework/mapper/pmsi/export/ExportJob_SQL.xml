@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="exportJobMapper">
+
+    <insert id="insertJob" parameterType="map">
+        INSERT INTO export_job(id, form_id, owner_id, status)
+        VALUES (#{jobId}, #{formId}, #{ownerId}, 'QUEUED')
+    </insert>
+
+    <update id="markRunning" parameterType="string">
+        UPDATE export_job SET status = 'RUNNING' WHERE id = #{jobId}
+    </update>
+
+    <update id="markDone" parameterType="map">
+        UPDATE export_job
+           SET status = 'DONE',
+               storage_key = #{storageKey},
+               file_name = #{fileName},
+               finished_at = now()
+         WHERE id = #{jobId}
+    </update>
+
+    <update id="markFailed" parameterType="map">
+        UPDATE export_job
+           SET status = 'FAILED',
+               error = #{error},
+               finished_at = now()
+         WHERE id = #{jobId}
+    </update>
+
+    <select id="selectJob" parameterType="map" resultType="map">
+        SELECT id          AS "jobId",
+               form_id     AS "formId",
+               owner_id    AS "ownerId",
+               status      AS "status",
+               storage_key AS "storageKey",
+               file_name   AS "fileName",
+               error       AS "error",
+               to_char(created_at, 'YYYY-MM-DD HH24:MI:SS')  AS "createdAt",
+               to_char(finished_at, 'YYYY-MM-DD HH24:MI:SS') AS "finishedAt"
+          FROM export_job
+         WHERE id = #{jobId}
+           AND form_id = #{formId}
+    </select>
+
+</mapper>

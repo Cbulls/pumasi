@@ -28,6 +28,13 @@ public class AuthInterceptor implements HandlerInterceptor {
         if ("OPTIONS".equalsIgnoreCase(request.getMethod())) {
             return true; // CORS preflight
         }
+        // 문항 이미지 GET은 공유 미리보기용으로 인증 생략(POST는 인증 필요)
+        String uri = request.getRequestURI();
+        if ("GET".equalsIgnoreCase(request.getMethod())
+                && uri != null
+                && uri.matches(".*/pmsi/form/[^/]+/media/[^/]+/?$")) {
+            return true;
+        }
         String auth = request.getHeader("Authorization");
         if (auth == null || !auth.startsWith("Bearer ")) {
             return unauthorized(response, "로그인이 필요합니다.");

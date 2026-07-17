@@ -1,11 +1,24 @@
 "use client";
 
 import Link from "next/link";
-import { useCloseForm, useMyForms } from "@/lib/hooks";
+import { useCloseForm, useMyForms, useResumeForm } from "@/lib/hooks";
 import { useCurrentUser } from "@/context/CurrentUserContext";
 import StatusBadge from "@/components/StatusBadge";
 import { rewardPreview } from "@/lib/format";
 import type { FormVO } from "@/lib/types";
+
+function ResumeFormButton({ form }: { form: FormVO }) {
+  const resume = useResumeForm(form.formId);
+  return (
+    <button
+      className="btn-primary"
+      disabled={resume.isPending}
+      onClick={() => resume.mutate()}
+    >
+      {resume.isPending ? "재개 중…" : "게시 재개"}
+    </button>
+  );
+}
 
 function CloseFormButton({ form }: { form: FormVO }) {
   const close = useCloseForm(form.formId);
@@ -78,6 +91,8 @@ export default function DashboardPage() {
               <div>
                 {f.status === "ACTIVE" ? (
                   <>응답 1건당 비용 {f.costCredits} · 보상 +{rewardPreview(f.costCredits)} · 최대 {f.maxResponses}건</>
+                ) : f.status === "PAUSED" ? (
+                  <>가드레일로 일시정지됨 — 불성실 응답이 몰려 자동으로 멈췄습니다</>
                 ) : f.status === "CLOSED" ? (
                   <>마감됨 · 최대 {f.maxResponses}건</>
                 ) : (
@@ -112,6 +127,7 @@ export default function DashboardPage() {
                     </button>
                   )}
                   {f.status === "ACTIVE" && <CloseFormButton form={f} />}
+                  {f.status === "PAUSED" && <ResumeFormButton form={f} />}
                 </>
               )}
             </div>

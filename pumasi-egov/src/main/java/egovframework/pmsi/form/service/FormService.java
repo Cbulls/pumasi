@@ -49,5 +49,12 @@ public interface FormService {
 
     List<QuestionVO> selectQuestions(String formId) throws Exception;
 
-    List<FormVO> selectActiveFeed(String viewerId) throws Exception;
+    /** 페이지네이션 피드(정원 미달 ACTIVE만, 1:1 부스트 정렬) */
+    List<FormVO> selectActiveFeed(String viewerId, int page, int size) throws Exception;
+
+    /** 가드레일 일시정지(PAUSED) 해제 — 소유자만 */
+    void resumeForm(String formId, String userId) throws Exception;
+
+    /** 가드레일: 시스템이 ACTIVE 폼을 자동 일시정지 */
+    void pauseForGuardrail(String formId) throws Exception;
 }

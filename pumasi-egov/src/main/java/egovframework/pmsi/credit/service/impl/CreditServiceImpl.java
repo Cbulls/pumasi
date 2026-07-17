@@ -37,7 +37,11 @@ public class CreditServiceImpl extends EgovAbstractServiceImpl implements Credit
     private static final String ESCROW_REFUND  = "ESCROW_REFUND";
     private static final String EARN_RESPONSE  = "EARN_RESPONSE";
     private static final String BURN           = "BURN";
+    private static final String PURCHASE       = "PURCHASE";
     private static final String SYSTEM_ACCOUNT = "SYSTEM";
+
+    /** 1회 충전 상한(베타 Fake 결제 가드) */
+    private static final long PURCHASE_MAX = 10_000;
 
     @Resource(name = "creditDAO")
     private CreditDAO creditDAO;
@@ -125,5 +129,23 @@ public class CreditServiceImpl extends EgovAbstractServiceImpl implements Credit
             throw PmsiException.notFound("credit.account.notfound", "잔액 계정 없음: " + userId);
         }
         return vo;
+    }
+
+    @Override
+    @Transactional
+    public CreditBalanceVO purchase(String userId, long amount, String refId) throws Exception {
+        if (amount <= 0 || amount > PURCHASE_MAX) {
+            throw PmsiException.badRequest("credit.purchase.amount",
+                    "충전 금액은 1~" + PURCHASE_MAX + " 사이여야 합니다.");
+        }
+        if (refId == null || refId.isBlank()) {
+            throw PmsiException.badRequest("credit.purchase.ref", "멱등 키(refId)가 필요합니다.");
+        }
+        // 멱등: 같은 refId 충전은 1회만
+        if (!creditDAO.ledgerExists(PURCHASE, refId)) {
+            creditDAO.creditAvailable(userId, amount);
+            creditDAO.insertLedger(userId, amount, PURCHASE, refId);
+        }
+        return getBalance(userId);
     }
 }

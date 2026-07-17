@@ -3,11 +3,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
+  recordEvent,
   useForm,
   useSections,
   useStartResponse,
   useSubmitResponse,
 } from "@/lib/hooks";
+import { useCurrentUser } from "@/context/CurrentUserContext";
 import { ApiError } from "@/lib/api";
 import AnswerInput from "@/components/AnswerInput";
 import ProgressBar from "@/components/ProgressBar";
@@ -56,6 +58,7 @@ export default function RespondPage({ params }: { params: { id: string } }) {
   const { data: sections } = useSections(formId);
   const start = useStartResponse(formId);
   const submit = useSubmitResponse(formId);
+  const { token } = useCurrentUser();
 
   const [answers, setAnswers] = useState<Record<string, string[]>>({});
   const [result, setResult] = useState<SubmitResult | null>(null);
@@ -85,17 +88,20 @@ export default function RespondPage({ params }: { params: { id: string } }) {
   useEffect(() => {
     if (startedRef.current || !form) return;
     startedRef.current = true;
-    startMutate().catch((e) => {
-      const err = e as ApiError;
-      if (err.code === "form.closed" || err.code === "form.not.active") {
-        setBlocked("이 설문은 마감되었거나 아직 게시되지 않았습니다.");
-      } else if (err.code === "response.own.form") {
-        setBlocked("본인 설문에는 응답할 수 없습니다.");
-      } else {
-        setBlocked(err.message);
-      }
-    });
-  }, [form, startMutate]);
+    recordEvent(token, formId, "view");
+    startMutate()
+      .then(() => recordEvent(token, formId, "start"))
+      .catch((e) => {
+        const err = e as ApiError;
+        if (err.code === "form.closed" || err.code === "form.not.active") {
+          setBlocked("이 설문은 마감되었거나 아직 게시되지 않았습니다.");
+        } else if (err.code === "response.own.form") {
+          setBlocked("본인 설문에는 응답할 수 없습니다.");
+        } else {
+          setBlocked(err.message);
+        }
+      });
+  }, [form, formId, startMutate, token]);
 
   const answerable = useMemo(
     () =>
@@ -151,6 +157,7 @@ export default function RespondPage({ params }: { params: { id: string } }) {
     };
     try {
       const res = await submit.mutateAsync(payload);
+      recordEvent(token, formId, "submit");
       setResult(res);
     } catch (e) {
       const err = e as ApiError;

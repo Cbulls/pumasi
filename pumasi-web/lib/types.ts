@@ -5,12 +5,15 @@ export type QuestionType =
   | "LONG_TEXT"
   | "RADIO"
   | "CHECKBOX"
+  | "DROPDOWN"
   | "LINEAR_SCALE"
+  | "RATING"
+  | "DATE"
   | "DESCRIPTION"
   | "IMAGE"
   | "FILE";
 
-export type FormStatus = "DRAFT" | "ACTIVE" | "CLOSED";
+export type FormStatus = "DRAFT" | "ACTIVE" | "PAUSED" | "CLOSED";
 
 export interface FormVO {
   formId: string;
@@ -51,6 +54,8 @@ export interface QuestionVO {
   bodyHtml?: string | null;
   imageUrl?: string | null;
   branchRules?: Record<string, string> | null;
+  /** RADIO 전용 주의 문항 정답. 응답이 다르면 품질 reject */
+  attentionAnswer?: string | null;
 }
 
 export interface AnswerVO {
@@ -81,18 +86,37 @@ export interface ChartItem {
   questionId: string;
   title: string;
   type: QuestionType;
-  chartType: "pie" | "bar" | "histogram" | "text_list" | "unsupported";
+  sectionId?: string | null;
+  chartType: "pie" | "bar" | "histogram" | "text_list" | "text_freq" | "file_list" | "unsupported";
   counts: Record<string, number>;
   ratios: Record<string, number>;
   respondentCount: number;
   average: number;
   median: number;
   textResponses: string[];
+  ratioSumMayExceed100?: boolean;
+}
+
+export interface ResultsSummary {
+  totalResponses: number;
+  unlockedPassCount: number;
+  lockedCount: number;
+  passCount: number;
+  holdCount: number;
+  rejectCount: number;
+  unlockedCount: number;
+  unlockRate: number;
+}
+
+export interface ResultsPayload {
+  summary: ResultsSummary;
+  items: ChartItem[];
 }
 
 export interface ResponsesTable {
   questions: { questionId: string; title: string; type: QuestionType }[];
   rows: {
+    responseId?: string;
     anonLabel: string;
     qualityFlag: "pass" | "hold" | "reject";
     submittedAt: string;

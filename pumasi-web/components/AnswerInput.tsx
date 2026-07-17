@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { uploadFormFile } from "@/lib/hooks";
 import { useCurrentUser } from "@/context/CurrentUserContext";
+import QuestionImage from "@/components/QuestionImage";
 import type { QuestionVO } from "@/lib/types";
 
 interface Props {
@@ -18,9 +19,18 @@ export default function AnswerInput({ question, value, onChange, formId }: Props
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
 
+  const wrap = (body: ReactNode) => (
+    <div className="space-y-3">
+      {q.type !== "IMAGE" && q.imageUrl ? (
+        <QuestionImage imageUrl={q.imageUrl} alt={q.title} />
+      ) : null}
+      {body}
+    </div>
+  );
+
   switch (q.type) {
     case "DESCRIPTION":
-      return (
+      return wrap(
         <div className="rounded-lg bg-slate-50 p-3 text-sm text-slate-600 whitespace-pre-wrap">
           {q.bodyHtml || q.title}
         </div>
@@ -28,14 +38,13 @@ export default function AnswerInput({ question, value, onChange, formId }: Props
 
     case "IMAGE":
       return q.imageUrl ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={q.imageUrl} alt={q.title} className="max-h-64 rounded-lg object-contain" />
+        <QuestionImage imageUrl={q.imageUrl} alt={q.title} />
       ) : (
         <p className="text-sm text-slate-400">이미지 없음</p>
       );
 
     case "FILE":
-      return (
+      return wrap(
         <div className="space-y-2">
           <input
             type="file"
@@ -63,7 +72,7 @@ export default function AnswerInput({ question, value, onChange, formId }: Props
       );
 
     case "SHORT_TEXT":
-      return (
+      return wrap(
         <input
           className="input"
           value={value[0] ?? ""}
@@ -73,7 +82,7 @@ export default function AnswerInput({ question, value, onChange, formId }: Props
       );
 
     case "LONG_TEXT":
-      return (
+      return wrap(
         <textarea
           className="input"
           rows={3}
@@ -84,7 +93,7 @@ export default function AnswerInput({ question, value, onChange, formId }: Props
       );
 
     case "RADIO":
-      return (
+      return wrap(
         <div className="space-y-2">
           {(q.options ?? []).map((opt) => (
             <label
@@ -104,7 +113,7 @@ export default function AnswerInput({ question, value, onChange, formId }: Props
       );
 
     case "CHECKBOX":
-      return (
+      return wrap(
         <div className="space-y-2">
           {(q.options ?? []).map((opt) => {
             const checked = value.includes(opt);
@@ -127,11 +136,69 @@ export default function AnswerInput({ question, value, onChange, formId }: Props
         </div>
       );
 
+    case "DROPDOWN":
+      return wrap(
+        <select
+          className="input"
+          value={value[0] ?? ""}
+          onChange={(e) => onChange(e.target.value ? [e.target.value] : [])}
+        >
+          <option value="">선택하세요</option>
+          {(q.options ?? []).map((opt) => (
+            <option key={opt} value={opt}>
+              {opt}
+            </option>
+          ))}
+        </select>
+      );
+
+    case "DATE":
+      return wrap(
+        <input
+          type="date"
+          className="input"
+          value={value[0] ?? ""}
+          onChange={(e) => onChange(e.target.value ? [e.target.value] : [])}
+        />
+      );
+
+    case "RATING": {
+      const min = q.scaleMin ?? 1;
+      const max = q.scaleMax ?? 5;
+      const nums = Array.from({ length: max - min + 1 }, (_, i) => min + i);
+      const selected = value[0] ? Number(value[0]) : null;
+      return wrap(
+        <div className="flex flex-wrap items-center gap-1">
+          {nums.map((n) => {
+            const filled = selected !== null && n <= selected;
+            return (
+              <button
+                key={n}
+                type="button"
+                aria-label={`${n}점`}
+                onClick={() => onChange([String(n)])}
+                className={`text-2xl transition ${
+                  filled ? "text-amber-400" : "text-slate-300 hover:text-amber-300"
+                }`}
+              >
+                ★
+              </button>
+            );
+          })}
+          {selected !== null && (
+            <span className="ml-2 text-sm text-slate-500">
+              {selected} / {max}
+            </span>
+          )}
+        </div>
+      );
+    }
+
     case "LINEAR_SCALE": {
       const min = q.scaleMin ?? 1;
       const max = q.scaleMax ?? 5;
       const nums = Array.from({ length: max - min + 1 }, (_, i) => min + i);
-      return (
+      return wrap(
         <div className="flex flex-wrap gap-2">
           {nums.map((n) => {
             const s = String(n);

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="eventMapper">
+
+    <!-- 응답 퍼널 이벤트: view / start / submit -->
+    <insert id="insertEvent" parameterType="map">
+        INSERT INTO survey_event(form_id, user_id, event_type)
+        VALUES (#{formId}, #{userId}, #{eventType})
+    </insert>
+
+    <!-- 폼별 퍼널 집계 -->
+    <select id="selectFunnel" parameterType="string" resultType="map">
+        SELECT COUNT(*) FILTER (WHERE event_type = 'view')::int   AS "viewCount",
+               COUNT(*) FILTER (WHERE event_type = 'start')::int  AS "startCount",
+               COUNT(*) FILTER (WHERE event_type = 'submit')::int AS "submitCount"
+          FROM survey_event
+         WHERE form_id = #{formId}
+    </select>
+
+</mapper>

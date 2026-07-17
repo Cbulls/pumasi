@@ -20,4 +20,10 @@ public interface CreditService {
 
     /** 잔액 조회 */
     CreditBalanceVO getBalance(String userId) throws Exception;
+
+    /**
+     * 크레딧 충전(베타: Fake 결제). refId(클라이언트 생성 키)로 멱등.
+     * 실PG 도입 시 webhook에서 같은 포트를 호출한다.
+     */
+    CreditBalanceVO purchase(String userId, long amount, String refId) throws Exception;
 }

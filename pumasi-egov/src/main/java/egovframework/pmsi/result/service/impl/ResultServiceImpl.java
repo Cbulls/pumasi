@@ -41,13 +41,28 @@ public class ResultServiceImpl extends EgovAbstractServiceImpl implements Result
 
     @Override
     @Transactional(readOnly = true)
-    public List<Map<String, Object>> chartData(String formId, String userId) throws Exception {
+    public Map<String, Object> chartData(String formId, String userId) throws Exception {
         FormVO form = requireOwner(formId, userId);
+        String ownerId = form.getOwnerId();
+
+        ResponseStats stats = resultDAO.selectResponseStats(formId, ownerId);
+        Map<String, Object> summary = new LinkedHashMap<>();
+        summary.put("totalResponses", stats.getTotalResponses());
+        summary.put("unlockedPassCount", stats.getUnlockedPassCount());
+        summary.put("lockedCount", stats.getLockedCount());
+        summary.put("passCount", stats.getPassCount());
+        summary.put("holdCount", stats.getHoldCount());
+        summary.put("rejectCount", stats.getRejectCount());
+        summary.put("unlockedCount", stats.getUnlockedCount());
+        double unlockRate = stats.getTotalResponses() == 0
+                ? 0.0
+                : (double) stats.getUnlockedCount() / stats.getTotalResponses();
+        summary.put("unlockRate", unlockRate);
 
         List<QuestionVO> questions = formService.selectQuestions(formId);
-        List<RespData> responses = loadUnlockedPassResponses(formId, form.getOwnerId());
+        List<RespData> responses = loadUnlockedPassResponses(formId, ownerId);
 
-        List<Map<String, Object>> out = new ArrayList<>();
+        List<Map<String, Object>> items = new ArrayList<>();
         for (QuestionVO qvo : questions) {
             if (FormValidator.CONTENT_TYPES.contains(qvo.getType())) continue;
             QSpec q = toSpec(qvo);
@@ -56,6 +71,7 @@ public class ResultServiceImpl extends EgovAbstractServiceImpl implements Result
             item.put("questionId", q.id);
             item.put("title", qvo.getTitle());
             item.put("type", qvo.getType());
+            item.put("sectionId", qvo.getSectionId());
             item.put("chartType", cd.chartType);
             item.put("counts", cd.counts);
             item.put("ratios", cd.ratios);
@@ -63,8 +79,13 @@ public class ResultServiceImpl extends EgovAbstractServiceImpl implements Result
             item.put("average", cd.average);
             item.put("median", cd.median);
             item.put("textResponses", cd.textResponses);
-            out.add(item);
+            item.put("ratioSumMayExceed100", cd.ratioSumMayExceed100);
+            items.add(item);
         }
+
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("summary", summary);
+        out.put("items", items);
         return out;
     }
 
@@ -104,6 +125,7 @@ public class ResultServiceImpl extends EgovAbstractServiceImpl implements Result
             else lockedCount++;
 
             Map<String, Object> row = new LinkedHashMap<>();
+            row.put("responseId", r.getResponseId());   // HOLD 검토용(PII 아님)
             row.put("anonLabel", r.getAnonLabel());
             row.put("qualityFlag", r.getQualityFlag());
             row.put("submittedAt", r.getSubmittedAt());

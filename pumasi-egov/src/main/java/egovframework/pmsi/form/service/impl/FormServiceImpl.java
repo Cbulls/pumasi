@@ -311,8 +311,32 @@ public class FormServiceImpl extends EgovAbstractServiceImpl implements FormServ
 
     @Override
     @Transactional(readOnly = true)
-    public List<FormVO> selectActiveFeed(String viewerId) throws Exception {
-        return formDAO.selectActiveFeed(viewerId);
+    public List<FormVO> selectActiveFeed(String viewerId, int page, int size) throws Exception {
+        int safeSize = Math.min(Math.max(size, 1), 50);
+        int safePage = Math.max(page, 0);
+        return formDAO.selectActiveFeed(viewerId, safeSize, safePage * safeSize);
+    }
+
+    @Override
+    @Transactional
+    public void resumeForm(String formId, String userId) throws Exception {
+        FormVO form = formDAO.selectFormForUpdate(formId);
+        if (form == null) {
+            throw PmsiException.notFound("form.notfound", "폼 없음: " + formId);
+        }
+        if (!form.getOwnerId().equals(userId)) {
+            throw PmsiException.forbidden("form.forbidden", "본인 폼만 재개할 수 있습니다.");
+        }
+        if (!"PAUSED".equals(form.getStatus())) {
+            throw PmsiException.conflict("form.not.paused", "일시정지된 폼만 재개할 수 있습니다.");
+        }
+        formDAO.resume(formId);
+    }
+
+    @Override
+    @Transactional
+    public void pauseForGuardrail(String formId) throws Exception {
+        formDAO.pause(formId);
     }
 
     @Override
@@ -320,7 +344,8 @@ public class FormServiceImpl extends EgovAbstractServiceImpl implements FormServ
     public List<QuestionVO> selectQuestions(String formId) throws Exception {
         List<QuestionVO> questions = formDAO.selectQuestions(formId);
         for (QuestionVO q : questions) {
-            if ("RADIO".equals(q.getType()) || "CHECKBOX".equals(q.getType())) {
+            if ("RADIO".equals(q.getType()) || "CHECKBOX".equals(q.getType())
+                    || "DROPDOWN".equals(q.getType())) {
                 q.setOptions(formDAO.selectOptionLabels(q.getQuestionId()));
             }
         }

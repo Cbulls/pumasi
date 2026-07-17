@@ -16,4 +16,9 @@ public interface ResponseService {
      * 유효성 검증 → 저장 → quality 판정 → pass면 크레딧 정산(1인 1회 UNIQUE).
      */
     SubmitResultVO submit(String formId, String respondentId, SubmitRequestVO req) throws Exception;
+
+    /**
+     * HOLD 응답 검토(소유자). decision=pass면 소급 정산(멱등), reject면 플래그만 변경.
+     */
+    void review(String formId, String responseId, String ownerId, String decision) throws Exception;
 }

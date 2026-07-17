@@ -1,12 +1,12 @@
 package egovframework.pmsi.form.web;
 
 import egovframework.pmsi.cmm.PmsiException;
+import egovframework.pmsi.cmm.storage.StorageClient;
 import egovframework.pmsi.cmm.web.CurrentUser;
 import egovframework.pmsi.form.service.FormService;
 import egovframework.pmsi.form.service.FormVO;
 import egovframework.pmsi.response.service.impl.ResponseDAO;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.core.io.FileSystemResource;
+import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -14,14 +14,13 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
 /**
- * 응답 파일 업로드/다운로드 (스켈레톤: 로컬 디스크).
+ * 응답 파일 업로드/다운로드 (StorageClient: local 디스크 / S3 호환).
  *
  *  POST /pmsi/form/{formId}/files   multipart file
  *  GET  /pmsi/form/{formId}/files/{fileId}
@@ -35,8 +34,8 @@ public class EgovFileController {
             "image/jpeg", "image/png", "image/gif", "image/webp",
             "application/pdf", "text/plain");
 
-    @Value("${pmsi.upload.dir:./uploads}")
-    private String uploadDir;
+    @javax.annotation.Resource(name = "storageClient")
+    private StorageClient storage;
 
     @javax.annotation.Resource(name = "formService")
     private FormService formService;
@@ -69,10 +68,7 @@ public class EgovFileController {
         }
         String original = sanitize(file.getOriginalFilename());
         String fileId = UUID.randomUUID().toString().replace("-", "") + "_" + original;
-        Path dir = Path.of(uploadDir, formId);
-        Files.createDirectories(dir);
-        Path dest = dir.resolve(fileId);
-        file.transferTo(dest);
+        storage.put(formId + "/" + fileId, file.getBytes(), contentType);
 
         return Map.of(
                 "fileId", fileId,
@@ -95,17 +91,27 @@ public class EgovFileController {
         if (fileId.contains("..") || fileId.contains("/") || fileId.contains("\\")) {
             throw PmsiException.badRequest("file.invalid", "잘못된 파일 ID입니다.");
         }
-        Path path = Path.of(uploadDir, formId, fileId);
-        if (!Files.exists(path)) {
+        byte[] bytes = storage.get(formId + "/" + fileId);
+        if (bytes == null) {
             throw PmsiException.notFound("file.notfound", "파일 없음");
         }
-        Resource res = new FileSystemResource(path);
-        String contentType = Files.probeContentType(path);
+        Resource res = new ByteArrayResource(bytes);
+        String contentType = guessContentType(fileId);
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + fileId + "\"")
-                .contentType(MediaType.parseMediaType(
-                        contentType != null ? contentType : "application/octet-stream"))
+                .contentType(MediaType.parseMediaType(contentType))
                 .body(res);
+    }
+
+    private String guessContentType(String fileId) {
+        String lower = fileId.toLowerCase();
+        if (lower.endsWith(".pdf")) return "application/pdf";
+        if (lower.endsWith(".png")) return "image/png";
+        if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
+        if (lower.endsWith(".gif")) return "image/gif";
+        if (lower.endsWith(".webp")) return "image/webp";
+        if (lower.endsWith(".txt")) return "text/plain";
+        return "application/octet-stream";
     }
 
     private String sanitize(String name) {

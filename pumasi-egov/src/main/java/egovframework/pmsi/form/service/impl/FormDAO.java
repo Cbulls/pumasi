@@ -97,8 +97,22 @@ public class FormDAO extends EgovAbstractMapper {
         return getSqlSession().selectList(NS + "selectFormList", ownerId);
     }
 
-    public List<FormVO> selectActiveFeed(String viewerId) {
-        return getSqlSession().selectList(NS + "selectActiveFeed", viewerId);
+    public List<FormVO> selectActiveFeed(String viewerId, int limit, int offset) {
+        Map<String, Object> p = new HashMap<>();
+        p.put("viewerId", viewerId);
+        p.put("limit", limit);
+        p.put("offset", offset);
+        return getSqlSession().selectList(NS + "selectActiveFeed", p);
+    }
+
+    /** 가드레일: ACTIVE → PAUSED */
+    public void pause(String formId) {
+        getSqlSession().update(NS + "pause", formId);
+    }
+
+    /** 소유자 재개: PAUSED → ACTIVE */
+    public void resume(String formId) {
+        getSqlSession().update(NS + "resume", formId);
     }
 
     public String selectFirstSectionId(String formId) {

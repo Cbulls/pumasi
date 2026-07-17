@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import ImageUploader from "@/components/ImageUploader";
 import type { QuestionType, QuestionVO, SectionVO } from "@/lib/types";
 
 const TYPE_LABELS: Record<QuestionType, string> = {
@@ -8,17 +9,25 @@ const TYPE_LABELS: Record<QuestionType, string> = {
   LONG_TEXT: "장문형",
   RADIO: "객관식(단일선택)",
   CHECKBOX: "체크박스(다중선택)",
+  DROPDOWN: "드롭다운",
   LINEAR_SCALE: "선형 배율",
+  RATING: "별점(평점)",
+  DATE: "날짜",
   DESCRIPTION: "설명 문구",
   IMAGE: "이미지",
   FILE: "파일 업로드",
 };
 
-const isChoice = (t: QuestionType) => t === "RADIO" || t === "CHECKBOX";
+const isChoice = (t: QuestionType) =>
+  t === "RADIO" || t === "CHECKBOX" || t === "DROPDOWN";
+const isScale = (t: QuestionType) => t === "LINEAR_SCALE" || t === "RATING";
 const isContent = (t: QuestionType) => t === "DESCRIPTION" || t === "IMAGE";
+const canAttachImage = (t: QuestionType) =>
+  !isContent(t); // 응답형·FILE: 제목 아래 삽화(선택)
 
 interface Props {
   disabled?: boolean;
+  formId?: string;
   sections?: SectionVO[];
   initial?: QuestionVO | null;
   onSubmit: (q: Partial<QuestionVO>) => Promise<void>;
@@ -27,6 +36,7 @@ interface Props {
 
 export default function QuestionEditor({
   disabled,
+  formId,
   sections,
   initial,
   onSubmit,
@@ -47,6 +57,7 @@ export default function QuestionEditor({
   const [branchRules, setBranchRules] = useState<Record<string, string>>(
     initial?.branchRules ?? {}
   );
+  const [attentionAnswer, setAttentionAnswer] = useState(initial?.attentionAnswer ?? "");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -62,6 +73,7 @@ export default function QuestionEditor({
     setImageUrl(initial.imageUrl ?? "");
     setSectionId(initial.sectionId ?? sections?.[0]?.sectionId ?? "");
     setBranchRules(initial.branchRules ?? {});
+    setAttentionAnswer(initial.attentionAnswer ?? "");
   }, [initial, sections]);
 
   const submit = async () => {
@@ -84,7 +96,7 @@ export default function QuestionEditor({
       }
       payload.options = opts;
     }
-    if (type === "LINEAR_SCALE") {
+    if (isScale(type)) {
       if (scaleMin >= scaleMax) {
         setError("scaleMin은 scaleMax보다 작아야 합니다.");
         return;
@@ -95,16 +107,22 @@ export default function QuestionEditor({
     if (type === "DESCRIPTION") payload.bodyHtml = bodyHtml;
     if (type === "IMAGE") {
       if (!imageUrl.trim()) {
-        setError("이미지 URL을 입력하세요.");
+        setError("이미지를 업로드하세요.");
         return;
       }
       payload.imageUrl = imageUrl.trim();
+    } else if (canAttachImage(type) && imageUrl.trim()) {
+      payload.imageUrl = imageUrl.trim();
+    } else if (canAttachImage(type)) {
+      payload.imageUrl = null;
     }
     if (type === "RADIO" && Object.keys(branchRules).length > 0) {
       payload.branchRules = branchRules;
     } else {
       payload.branchRules = null;
     }
+    payload.attentionAnswer =
+      type === "RADIO" && attentionAnswer.trim() ? attentionAnswer.trim() : null;
     try {
       setBusy(true);
       await onSubmit(payload);
@@ -200,15 +218,22 @@ export default function QuestionEditor({
       )}
 
       {type === "IMAGE" && (
-        <div>
-          <label className="label">이미지 URL</label>
-          <input
-            className="input"
-            value={imageUrl}
-            onChange={(e) => setImageUrl(e.target.value)}
-            placeholder="https://..."
-          />
-        </div>
+        <ImageUploader
+          formId={formId}
+          value={imageUrl}
+          onChange={setImageUrl}
+          label="이미지"
+          required
+        />
+      )}
+
+      {canAttachImage(type) && (
+        <ImageUploader
+          formId={formId}
+          value={imageUrl}
+          onChange={setImageUrl}
+          label="문항 이미지 (선택)"
+        />
       )}
 
       {isChoice(type) && (
@@ -245,7 +270,7 @@ export default function QuestionEditor({
         </div>
       )}
 
-      {type === "LINEAR_SCALE" && (
+      {isScale(type) && (
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="label">최소값</label>
@@ -265,6 +290,32 @@ export default function QuestionEditor({
               onChange={(e) => setScaleMax(Number(e.target.value))}
             />
           </div>
+        </div>
+      )}
+
+      {type === "RADIO" && (
+        <div className="space-y-1 rounded-lg bg-amber-50 p-3">
+          <label className="text-sm font-semibold text-amber-800">
+            주의 문항 (선택 — 어뷰징 필터)
+          </label>
+          <p className="text-xs text-amber-700">
+            정답을 지정하면, 응답자가 다른 보기를 고를 때 해당 응답이 자동 reject됩니다.
+          </p>
+          <select
+            className="input"
+            value={attentionAnswer}
+            onChange={(e) => setAttentionAnswer(e.target.value)}
+          >
+            <option value="">사용 안 함</option>
+            {options
+              .map((o) => o.trim())
+              .filter(Boolean)
+              .map((opt) => (
+                <option key={opt} value={opt}>
+                  정답: {opt}
+                </option>
+              ))}
+          </select>
         </div>
       )}
 

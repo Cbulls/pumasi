@@ -47,4 +47,13 @@ public class ResultDAO extends EgovAbstractMapper {
         p.put("respondentId", respondentId);
         return getSqlSession().selectOne(NS + "selectUnlockTarget", p);
     }
+
+    public ResponseStats selectResponseStats(String formId, String ownerId) {
+        Map<String, Object> p = new HashMap<>();
+        p.put("formId", formId);
+        p.put("ownerId", ownerId);
+        ResponseStats s = getSqlSession().selectOne(NS + "selectResponseStats", p);
+        return s != null ? s : new ResponseStats();
+    }
+
 }

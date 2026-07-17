@@ -126,6 +126,15 @@ public class EgovFormController {
         return ResponseEntity.ok(formService.selectForm(formId));
     }
 
+    /** 가드레일 일시정지(PAUSED) 해제 — 소유자만 */
+    @PostMapping("/{formId}/resume")
+    public ResponseEntity<FormVO> resumeForm(
+            @PathVariable String formId,
+            @CurrentUser String userId) throws Exception {
+        formService.resumeForm(formId, userId);
+        return ResponseEntity.ok(formService.selectForm(formId));
+    }
+
     @GetMapping("/{formId}")
     public FormVO selectForm(
             @PathVariable String formId,

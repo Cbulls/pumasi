@@ -22,6 +22,11 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-web'
     implementation 'org.springframework.boot:spring-boot-starter-jdbc'
     implementation 'org.springframework.boot:spring-boot-starter-validation'
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+
+    // --- 오브젝트 스토리지 (S3 호환; pmsi.storage.mode=s3일 때 사용) ---
+    implementation platform('software.amazon.awssdk:bom:2.29.29')
+    implementation 'software.amazon.awssdk:s3'
 
     // --- 전자정부표준프레임워크 실행환경 (eGovFrame rte 4.3.0) ---
     //   fdl.cmmn         : EgovAbstractServiceImpl (서비스 표준 기반 클래스)
@@ -39,6 +44,10 @@ dependencies {
 
     // @Resource(javax.annotation) — 표준 이름 기반 주입에 필요
     implementation 'jakarta.annotation:jakarta.annotation-api'
+
+    // --- 이미지 리사이즈 / WebP (aarch64 Mac·Linux 네이티브 포함) ---
+    implementation 'net.coobird:thumbnailator:0.4.20'
+    implementation 'com.github.usefulness:webp-imageio:0.10.2'
 
     runtimeOnly 'org.postgresql:postgresql'
 

@@ -28,7 +28,10 @@ const TYPE_KO: Record<QuestionType, string> = {
   LONG_TEXT: "장문형",
   RADIO: "단일선택",
   CHECKBOX: "다중선택",
+  DROPDOWN: "드롭다운",
   LINEAR_SCALE: "선형배율",
+  RATING: "별점",
+  DATE: "날짜",
   DESCRIPTION: "설명",
   IMAGE: "이미지",
   FILE: "파일",
@@ -301,6 +304,7 @@ function Builder({ formId, onPublished }: { formId: string; onPublished: () => v
 
       {isDraft && !editing && (
         <QuestionEditor
+          formId={formId}
           sections={sections}
           onSubmit={async (q) => {
             await addQuestion.mutateAsync(q);
@@ -309,6 +313,7 @@ function Builder({ formId, onPublished }: { formId: string; onPublished: () => v
       )}
       {isDraft && editing && (
         <QuestionEditor
+          formId={formId}
           sections={sections}
           initial={editing}
           onCancel={() => setEditing(null)}

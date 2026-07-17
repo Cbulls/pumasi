@@ -39,6 +39,7 @@
         <result property="scaleMax"   column="scale_max"/>
         <result property="bodyHtml"   column="body_html"/>
         <result property="imageUrl"   column="image_url"/>
+        <result property="attentionAnswer" column="attention_answer"/>
         <result property="branchRules" column="branch_rules"
                 typeHandler="egovframework.pmsi.form.service.impl.JsonMapTypeHandler"/>
     </resultMap>
@@ -138,14 +139,33 @@
          ORDER BY created_at DESC
     </select>
 
-    <!-- 1:1 부스트: 내 설문에 응답해준 사람의 설문을 상단 우선 -->
-    <select id="selectActiveFeed" parameterType="string" resultMap="formMap">
+    <!--
+      피드: ACTIVE + 남의 것 + 미응답 + 정원 미달만.
+      정렬: 1:1 부스트(내 설문에 응답해준 사람) → 채움률 낮은 순(공정) → 최신순.
+      reciprocal CTE로 부스트 EXISTS를 한 번만 계산. limit/offset 페이지네이션.
+    -->
+    <select id="selectActiveFeed" parameterType="map" resultMap="formMap">
+        WITH reciprocal AS (
+            SELECT DISTINCT r2.respondent_id AS owner_id
+              FROM survey_response r2
+              JOIN form myf ON myf.id = r2.form_id
+             WHERE myf.owner_id = #{viewerId}
+        ),
+        pass_counts AS (
+            SELECT form_id, COUNT(*)::int AS pass_count
+              FROM survey_response
+             WHERE quality_flag = 'pass'
+             GROUP BY form_id
+        )
         SELECT f.id, f.owner_id, f.title, f.description, f.status, f.cost_credits, f.max_responses,
                f.closes_at, f.share_token
           FROM form f
+          LEFT JOIN reciprocal rc ON rc.owner_id = f.owner_id
+          LEFT JOIN pass_counts pc ON pc.form_id = f.id
          WHERE f.status = 'ACTIVE'
            AND f.owner_id != #{viewerId}
            AND (f.closes_at IS NULL OR f.closes_at > now())
+           AND COALESCE(pc.pass_count, 0) &lt; f.max_responses
            AND NOT EXISTS (
                 SELECT 1
                   FROM survey_response r
@@ -153,15 +173,29 @@
                    AND r.respondent_id = #{viewerId}
            )
          ORDER BY
-           CASE WHEN EXISTS (
-                SELECT 1
-                  FROM survey_response r2
-                  JOIN form myf ON myf.id = r2.form_id
-                 WHERE myf.owner_id = #{viewerId}
-                   AND r2.respondent_id = f.owner_id
-           ) THEN 0 ELSE 1 END,
+           CASE WHEN rc.owner_id IS NOT NULL THEN 0 ELSE 1 END,
+           COALESCE(pc.pass_count, 0)::float / f.max_responses ASC,
            f.created_at DESC
+         LIMIT #{limit} OFFSET #{offset}
     </select>
+
+    <!-- 가드레일: PAUSED ← ACTIVE -->
+    <update id="pause" parameterType="string">
+        UPDATE form
+           SET status = 'PAUSED',
+               updated_at = now()
+         WHERE id = #{formId}
+           AND status = 'ACTIVE'
+    </update>
+
+    <!-- 소유자 재개: ACTIVE ← PAUSED -->
+    <update id="resume" parameterType="string">
+        UPDATE form
+           SET status = 'ACTIVE',
+               updated_at = now()
+         WHERE id = #{formId}
+           AND status = 'PAUSED'
+    </update>
 
     <select id="selectFirstSectionId" parameterType="string" resultType="string">
         SELECT id
@@ -181,7 +215,7 @@
     <select id="selectQuestion" parameterType="map" resultMap="questionMap">
         SELECT id, section_id, form_id, type, title, required, order_index,
                min_select, max_select, min_length, max_length, regex, scale_min, scale_max,
-               body_html, image_url, branch_rules
+               body_html, image_url, attention_answer, branch_rules
           FROM form_question
          WHERE id = #{questionId}
            AND form_id = #{formId}
@@ -191,11 +225,11 @@
         INSERT INTO form_question(
             id, section_id, form_id, type, title, required, order_index,
             min_select, max_select, min_length, max_length, regex, scale_min, scale_max,
-            body_html, image_url, branch_rules)
+            body_html, image_url, attention_answer, branch_rules)
         VALUES (
             #{questionId}, #{sectionId}, #{formId}, #{type}, #{title}, #{required}, #{orderIndex},
             #{minSelect}, #{maxSelect}, #{minLength}, #{maxLength}, #{regex}, #{scaleMin}, #{scaleMax},
-            #{bodyHtml}, #{imageUrl},
+            #{bodyHtml}, #{imageUrl}, #{attentionAnswer},
             #{branchRules, typeHandler=egovframework.pmsi.form.service.impl.JsonMapTypeHandler})
     </insert>
 
@@ -214,6 +248,7 @@
                scale_max = #{scaleMax},
                body_html = #{bodyHtml},
                image_url = #{imageUrl},
+               attention_answer = #{attentionAnswer},
                branch_rules = #{branchRules, typeHandler=egovframework.pmsi.form.service.impl.JsonMapTypeHandler}
          WHERE id = #{questionId}
            AND form_id = #{formId}
@@ -262,7 +297,7 @@
     <select id="selectQuestions" parameterType="string" resultMap="questionMap">
         SELECT id, section_id, form_id, type, title, required, order_index,
                min_select, max_select, min_length, max_length, regex, scale_min, scale_max,
-               body_html, image_url, branch_rules
+               body_html, image_url, attention_answer, branch_rules
           FROM form_question
          WHERE form_id = #{formId}
          ORDER BY order_index ASC

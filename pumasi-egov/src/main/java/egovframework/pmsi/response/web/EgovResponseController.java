@@ -43,4 +43,18 @@ public class EgovResponseController {
         SubmitResultVO result = responseService.submit(formId, respondentId, req);
         return ResponseEntity.status(HttpStatus.CREATED).body(result);
     }
+
+    /**
+     * HOLD 응답 검토(소유자 큐).
+     * body: { "decision": "pass" | "reject" } — pass면 소급 정산(멱등)
+     */
+    @PostMapping("/{responseId}/review")
+    public ResponseEntity<Void> review(
+            @PathVariable String formId,
+            @PathVariable String responseId,
+            @CurrentUser String userId,
+            @RequestBody java.util.Map<String, String> body) throws Exception {
+        responseService.review(formId, responseId, userId, body.get("decision"));
+        return ResponseEntity.noContent().build();
+    }
 }

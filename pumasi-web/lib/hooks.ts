@@ -1,14 +1,19 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { apiFetch, API_BASE } from "@/lib/api";
 import { useCurrentUser } from "@/context/CurrentUserContext";
 import type {
-  ChartItem,
   CreditBalance,
   FormVO,
   QuestionVO,
   ResponsesTable,
+  ResultsPayload,
   SectionVO,
   SubmitRequest,
   SubmitResult,
@@ -23,11 +28,18 @@ export function useMyForms() {
   });
 }
 
+export const FEED_PAGE_SIZE = 20;
+
+/** 페이지네이션 피드: "더 보기"로 다음 페이지 로드 */
 export function useFeed() {
   const { token } = useCurrentUser();
-  return useQuery({
+  return useInfiniteQuery({
     queryKey: ["feed", token],
-    queryFn: () => apiFetch<FormVO[]>(`/pmsi/feed`, { token }),
+    queryFn: ({ pageParam }) =>
+      apiFetch<FormVO[]>(`/pmsi/feed?page=${pageParam}&size=${FEED_PAGE_SIZE}`, { token }),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage, pages) =>
+      lastPage.length < FEED_PAGE_SIZE ? undefined : pages.length,
     enabled: !!token,
   });
 }
@@ -92,7 +104,7 @@ export function useResults(formId: string) {
   const { userId, token } = useCurrentUser();
   return useQuery({
     queryKey: ["results", formId, userId],
-    queryFn: () => apiFetch<ChartItem[]>(`/pmsi/form/${formId}/results`, { token }),
+    queryFn: () => apiFetch<ResultsPayload>(`/pmsi/form/${formId}/results`, { token }),
     enabled: !!formId && !!token,
   });
 }
@@ -253,6 +265,73 @@ export function useCloseForm(formId: string) {
   });
 }
 
+/** 가드레일 PAUSED 해제(소유자) */
+export function useResumeForm(formId: string) {
+  const { userId, token } = useCurrentUser();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiFetch<FormVO>(`/pmsi/form/${formId}/resume`, { method: "POST", token }),
+    onSuccess: () => invalidateForm(qc, formId, userId),
+  });
+}
+
+/** 크레딧 충전(베타 Fake 결제). refId는 클라이언트 멱등 키 */
+export function usePurchaseCredits() {
+  const { userId, token } = useCurrentUser();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (amount: number) =>
+      apiFetch<CreditBalance>(`/pmsi/credit/purchase`, {
+        method: "POST",
+        token,
+        body: { amount, refId: crypto.randomUUID() },
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["credit", userId] }),
+  });
+}
+
+/** HOLD 응답 검토(소유자): pass=소급 정산 / reject */
+export function useReviewResponse(formId: string) {
+  const { userId, token } = useCurrentUser();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ responseId, decision }: { responseId: string; decision: "pass" | "reject" }) =>
+      apiFetch<void>(`/pmsi/form/${formId}/responses/${responseId}/review`, {
+        method: "POST",
+        token,
+        body: { decision },
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["responseTable", formId] });
+      qc.invalidateQueries({ queryKey: ["results", formId] });
+      qc.invalidateQueries({ queryKey: ["credit", userId] });
+    },
+  });
+}
+
+/** 응답 퍼널 이벤트(view/start/submit) — 실패해도 UX를 막지 않는다 */
+export function recordEvent(token: string | null, formId: string, eventType: "view" | "start" | "submit") {
+  apiFetch<void>(`/pmsi/events`, { method: "POST", token, body: { formId, eventType } }).catch(
+    () => undefined
+  );
+}
+
+/** 소유자용 퍼널 집계 */
+export function useFunnel(formId: string, enabled: boolean) {
+  const { userId, token } = useCurrentUser();
+  return useQuery({
+    queryKey: ["funnel", formId, userId],
+    queryFn: () =>
+      apiFetch<{
+        viewCount: number;
+        startCount: number;
+        submitCount: number;
+        completionRate: number;
+      }>(`/pmsi/form/${formId}/events/funnel`, { token }),
+    enabled: !!formId && !!token && enabled,
+  });
+}
+
 export function useStartResponse(formId: string) {
   const { token } = useCurrentUser();
   return useMutation({
@@ -272,6 +351,41 @@ export function useSubmitResponse(formId: string) {
       qc.invalidateQueries({ queryKey: ["feed"] });
     },
   });
+}
+
+export async function uploadFormMedia(
+  formId: string,
+  token: string | null,
+  file: File
+): Promise<{
+  assetId: string;
+  url: string;
+  thumbUrl: string;
+  displayUrl: string;
+  origUrl: string;
+  width: number;
+  height: number;
+}> {
+  const fd = new FormData();
+  fd.append("file", file);
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const res = await fetch(`${API_BASE}/pmsi/form/${formId}/media`, {
+    method: "POST",
+    headers,
+    body: fd,
+  });
+  const text = await res.text();
+  let data: any = null;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    data = null;
+  }
+  if (!res.ok) {
+    throw new Error((data && data.message) || `이미지 업로드 실패 (${res.status})`);
+  }
+  return data;
 }
 
 export async function uploadFormFile(

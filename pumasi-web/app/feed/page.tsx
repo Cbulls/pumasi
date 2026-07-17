@@ -5,7 +5,9 @@ import { useFeed } from "@/lib/hooks";
 import { rewardPreview } from "@/lib/format";
 
 export default function FeedPage() {
-  const { data: forms, isLoading, isError, error } = useFeed();
+  const { data, isLoading, isError, error, fetchNextPage, hasNextPage, isFetchingNextPage } =
+    useFeed();
+  const forms = data?.pages.flat();
 
   return (
     <div className="space-y-5">
@@ -51,6 +53,19 @@ export default function FeedPage() {
           </div>
         ))}
       </div>
+
+      {hasNextPage && (
+        <div className="flex justify-center">
+          <button
+            type="button"
+            className="btn-ghost"
+            disabled={isFetchingNextPage}
+            onClick={() => void fetchNextPage()}
+          >
+            {isFetchingNextPage ? "불러오는 중…" : "더 보기"}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

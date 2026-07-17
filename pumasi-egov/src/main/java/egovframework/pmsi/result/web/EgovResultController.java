@@ -17,7 +17,6 @@ import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
-import java.util.List;
 import java.util.Map;
 
 /**
@@ -35,7 +34,7 @@ public class EgovResultController {
     private ResultService resultService;
 
     @GetMapping
-    public List<Map<String, Object>> results(
+    public Map<String, Object> results(
             @PathVariable String formId,
             @CurrentUser String userId) throws Exception {
         return resultService.chartData(formId, userId);

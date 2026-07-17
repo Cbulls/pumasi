@@ -10,8 +10,12 @@ import java.util.Map;
  */
 public interface ResultService {
 
-    /** 질문별 차트 데이터(pass 응답만 집계) */
-    List<Map<String, Object>> chartData(String formId, String userId) throws Exception;
+    /**
+     * 요약 KPI + 질문별 차트.
+     * 반환: { summary:{...}, items:[{questionId,title,type,chartType,...}] }
+     * 차트 집계는 언락+pass만.
+     */
+    Map<String, Object> chartData(String formId, String userId) throws Exception;
 
     /**
      * 개별 응답 표(구글폼 "개별 보기" 유사). 소유자만.

@@ -5,6 +5,7 @@ import org.springframework.stereotype.Repository;
 
 import java.time.OffsetDateTime;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -59,6 +60,30 @@ public class ResponseDAO extends EgovAbstractMapper {
         Integer cnt = getSqlSession().selectOne(NS + "existsByFormAndRespondent",
                 sessionKey(formId, respondentId));
         return cnt != null && cnt > 0;
+    }
+
+    /** HOLD 검토용 응답 메타(responseId/respondentId/qualityFlag). 없으면 null */
+    public Map<String, Object> selectResponseMeta(String formId, String responseId) {
+        Map<String, Object> p = new HashMap<>();
+        p.put("formId", formId);
+        p.put("responseId", responseId);
+        return getSqlSession().selectOne(NS + "selectResponseMeta", p);
+    }
+
+    public void updateQualityFlag(String formId, String responseId, String qualityFlag) {
+        Map<String, Object> p = new HashMap<>();
+        p.put("formId", formId);
+        p.put("responseId", responseId);
+        p.put("qualityFlag", qualityFlag);
+        getSqlSession().update(NS + "updateQualityFlag", p);
+    }
+
+    /** 가드레일: 최근 limit건의 품질 플래그(최신순) */
+    public List<String> selectRecentQualityFlags(String formId, int limit) {
+        Map<String, Object> p = new HashMap<>();
+        p.put("formId", formId);
+        p.put("limit", limit);
+        return getSqlSession().selectList(NS + "selectRecentQualityFlags", p);
     }
 
     private Map<String, Object> sessionKey(String formId, String respondentId) {

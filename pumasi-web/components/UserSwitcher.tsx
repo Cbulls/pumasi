@@ -2,9 +2,13 @@
 
 import { useCurrentUser } from "@/context/CurrentUserContext";
 
+/** 데모 활성 여부: 프로덕션에서는 NEXT_PUBLIC_DEMO_AUTH=false 로 스위처를 숨긴다. */
+const DEMO_AUTH = process.env.NEXT_PUBLIC_DEMO_AUTH !== "false";
+
 /** 데모 계정 전환. 선택 시 해당 계정으로 로그인해 Bearer 토큰을 발급받는다. */
 export default function UserSwitcher() {
   const { userId, users, switchUser, ready } = useCurrentUser();
+  if (!DEMO_AUTH) return null;
   return (
     <label className="flex items-center gap-2 text-sm">
       <span className="hidden text-slate-500 sm:inline">계정</span>

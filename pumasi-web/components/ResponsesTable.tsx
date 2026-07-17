@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { serverCsvUrl, useResponsesTable } from "@/lib/hooks";
+import { serverCsvUrl, useResponsesTable, useReviewResponse } from "@/lib/hooks";
 import { useCurrentUser } from "@/context/CurrentUserContext";
 
 const FLAG_CLS: Record<string, string> = {
@@ -31,6 +31,7 @@ function filenameFromDisposition(header: string | null, fallback: string): strin
 export default function ResponsesTable({ formId, active }: { formId: string; active: boolean }) {
   const { token } = useCurrentUser();
   const { data, isLoading, isError, error } = useResponsesTable(formId, active);
+  const review = useReviewResponse(formId);
   const [downloading, setDownloading] = useState(false);
 
   const downloadServerCsv = async () => {
@@ -140,11 +141,38 @@ export default function ResponsesTable({ formId, active }: { formId: string; act
                     )}
                   </td>
                   <td className="px-3 py-2">
-                    <span
-                      className={`badge ${FLAG_CLS[row.qualityFlag] ?? "bg-slate-100 text-slate-600"}`}
-                    >
-                      {row.qualityFlag}
-                    </span>
+                    <div className="space-y-1">
+                      <span
+                        className={`badge ${FLAG_CLS[row.qualityFlag] ?? "bg-slate-100 text-slate-600"}`}
+                      >
+                        {row.qualityFlag}
+                      </span>
+                      {row.qualityFlag === "hold" && row.responseId && (
+                        <div className="flex gap-1">
+                          <button
+                            type="button"
+                            className="rounded border border-emerald-300 px-1.5 py-0.5 text-[11px] font-semibold text-emerald-700 hover:bg-emerald-50 disabled:opacity-50"
+                            title="승인하면 소급 정산되어 응답자에게 크레딧이 지급됩니다."
+                            disabled={review.isPending}
+                            onClick={() =>
+                              review.mutate({ responseId: row.responseId!, decision: "pass" })
+                            }
+                          >
+                            승인
+                          </button>
+                          <button
+                            type="button"
+                            className="rounded border border-red-300 px-1.5 py-0.5 text-[11px] font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50"
+                            disabled={review.isPending}
+                            onClick={() =>
+                              review.mutate({ responseId: row.responseId!, decision: "reject" })
+                            }
+                          >
+                            거절
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </td>
                   <td className="px-3 py-2 whitespace-nowrap text-slate-500">{row.submittedAt}</td>
                   {data.questions.map((q) => (

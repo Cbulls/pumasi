@@ -2,6 +2,7 @@ package egovframework.pmsi;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.scheduling.annotation.EnableAsync;
 
 /**
  * 품앗이폼 eGov Walking Skeleton 진입점.
@@ -15,6 +16,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
  *  - DI    : @Resource(name=...) 이름 기반 주입
  */
 @SpringBootApplication
+@EnableAsync
 public class PumasiApplication {
     public static void main(String[] args) {
         SpringApplication.run(PumasiApplication.class, args);

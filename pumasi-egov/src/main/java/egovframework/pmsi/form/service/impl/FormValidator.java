@@ -13,14 +13,17 @@ import java.util.Set;
 public class FormValidator {
 
     public static final Set<String> SUPPORTED_TYPES = Set.of(
-            "SHORT_TEXT", "LONG_TEXT", "RADIO", "CHECKBOX", "LINEAR_SCALE",
+            "SHORT_TEXT", "LONG_TEXT", "RADIO", "CHECKBOX", "DROPDOWN",
+            "LINEAR_SCALE", "RATING", "DATE",
             "DESCRIPTION", "IMAGE", "FILE");
 
     /** 응답·비용 산출에서 제외되는 안내 블록 */
     public static final Set<String> CONTENT_TYPES = Set.of("DESCRIPTION", "IMAGE");
 
-    private static final Set<String> CHOICE_TYPES = Set.of("RADIO", "CHECKBOX");
+    private static final Set<String> CHOICE_TYPES = Set.of("RADIO", "CHECKBOX", "DROPDOWN");
     private static final Set<String> TEXT_TYPES = Set.of("SHORT_TEXT", "LONG_TEXT");
+    /** 척도 범위(scaleMin/Max)를 쓰는 유형 */
+    private static final Set<String> SCALE_TYPES = Set.of("LINEAR_SCALE", "RATING");
 
     public List<String> validate(QuestionVO q) {
         List<String> errors = new ArrayList<>();
@@ -46,14 +49,21 @@ public class FormValidator {
                 errors.add("글자수 제한은 텍스트형에서만 사용할 수 있습니다.");
             }
             if (q.getScaleMin() != null || q.getScaleMax() != null) {
-                errors.add("척도 범위는 LINEAR_SCALE에서만 사용할 수 있습니다.");
+                errors.add("척도 범위는 LINEAR_SCALE/RATING에서만 사용할 수 있습니다.");
             }
         }
 
         if ("IMAGE".equals(type)) {
             if (q.getImageUrl() == null || q.getImageUrl().isBlank()) {
-                errors.add("IMAGE 유형은 imageUrl이 필요합니다.");
+                errors.add("IMAGE 유형은 이미지 업로드가 필요합니다.");
+            } else if (!isAllowedImageRef(q.getImageUrl())) {
+                errors.add("IMAGE imageUrl 형식이 올바르지 않습니다.");
             }
+        }
+        if (q.getImageUrl() != null && !q.getImageUrl().isBlank()
+                && !"IMAGE".equals(type)
+                && !isAllowedImageRef(q.getImageUrl())) {
+            errors.add("문항 이미지 URL 형식이 올바르지 않습니다.");
         }
         if ("DESCRIPTION".equals(type)) {
             // bodyHtml은 선택(제목만으로도 가능)
@@ -98,23 +108,31 @@ public class FormValidator {
             }
         }
 
-        if ("LINEAR_SCALE".equals(type)) {
+        if (SCALE_TYPES.contains(type)) {
             Integer smin = q.getScaleMin();
             Integer smax = q.getScaleMax();
             if (smin == null || smax == null) {
-                errors.add("LINEAR_SCALE는 scaleMin/scaleMax가 필요합니다.");
+                errors.add(type + "는 scaleMin/scaleMax가 필요합니다.");
             } else if (smin >= smax) {
                 errors.add("scaleMin은 scaleMax보다 작아야 합니다.");
             }
         } else if (q.getScaleMin() != null || q.getScaleMax() != null) {
             if (!CONTENT_TYPES.contains(type) && !"FILE".equals(type)) {
-                errors.add("척도 범위는 LINEAR_SCALE에서만 사용할 수 있습니다.");
+                errors.add("척도 범위는 LINEAR_SCALE/RATING에서만 사용할 수 있습니다.");
             }
         }
 
         if (q.getBranchRules() != null && !q.getBranchRules().isEmpty()) {
             if (!"RADIO".equals(type)) {
                 errors.add("조건부 분기는 RADIO에서만 사용할 수 있습니다.");
+            }
+        }
+
+        if (q.getAttentionAnswer() != null && !q.getAttentionAnswer().isBlank()) {
+            if (!"RADIO".equals(type)) {
+                errors.add("주의 문항 정답은 RADIO에서만 사용할 수 있습니다.");
+            } else if (q.getOptions() == null || !q.getOptions().contains(q.getAttentionAnswer())) {
+                errors.add("주의 문항 정답은 보기 중 하나여야 합니다.");
             }
         }
 
@@ -145,5 +163,14 @@ public class FormValidator {
             }
         }
         return errors;
+    }
+
+    /** 미디어 에셋 기준 경로 또는 레거시 https URL */
+    static boolean isAllowedImageRef(String ref) {
+        String r = ref.trim();
+        if (r.startsWith("/pmsi/form/") && r.contains("/media/")) {
+            return !r.contains("..") && !r.contains("?");
+        }
+        return r.startsWith("https://") || r.startsWith("http://");
     }
 }

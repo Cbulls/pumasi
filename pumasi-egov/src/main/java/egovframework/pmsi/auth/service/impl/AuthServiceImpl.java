@@ -4,6 +4,7 @@ import egovframework.pmsi.auth.service.AuthService;
 import egovframework.pmsi.auth.service.LoginResult;
 import egovframework.pmsi.cmm.PmsiException;
 import org.egovframe.rte.fdl.cmmn.EgovAbstractServiceImpl;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -16,8 +17,8 @@ import java.util.UUID;
  *
  * ★ 표준 규약: EgovAbstractServiceImpl 상속 + @Resource 이름 기반 주입.
  *
- * 데모용: 비밀번호 없이 계정 존재 여부만 확인하고 세션 토큰을 발급한다.
- * 실제 서비스에서는 소셜 로그인(OAuth)/비밀번호 해시로 대체한다.
+ * 데모용 패스워드리스 로그인은 pmsi.auth.demo-enabled=true 일 때만 허용한다.
+ * 프로덕션(false)에서는 OAuth/비밀번호 인증으로 대체하기 전까지 로그인 자체를 차단한다.
  */
 @Service("authService")
 public class AuthServiceImpl extends EgovAbstractServiceImpl implements AuthService {
@@ -27,9 +28,16 @@ public class AuthServiceImpl extends EgovAbstractServiceImpl implements AuthServ
     @Resource(name = "authDAO")
     private AuthDAO authDAO;
 
+    @Value("${pmsi.auth.demo-enabled:true}")
+    private boolean demoEnabled;
+
     @Override
     @Transactional
     public LoginResult login(String userId) throws Exception {
+        if (!demoEnabled) {
+            throw PmsiException.unauthorized("auth.demo.disabled",
+                    "데모 로그인이 비활성화되어 있습니다. 정식 인증을 사용하세요.");
+        }
         if (userId == null || userId.isBlank() || !authDAO.existsUser(userId)) {
             throw PmsiException.unauthorized("auth.unknown.user", "알 수 없는 계정입니다: " + userId);
         }

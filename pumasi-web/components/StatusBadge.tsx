@@ -3,6 +3,7 @@ import type { FormStatus } from "@/lib/types";
 const MAP: Record<FormStatus, { label: string; cls: string }> = {
   DRAFT: { label: "작성중", cls: "bg-amber-100 text-amber-700" },
   ACTIVE: { label: "게시중", cls: "bg-emerald-100 text-emerald-700" },
+  PAUSED: { label: "일시정지", cls: "bg-orange-100 text-orange-700" },
   CLOSED: { label: "마감", cls: "bg-slate-200 text-slate-600" },
 };
 

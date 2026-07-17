@@ -136,7 +136,7 @@ public class ResponseServiceImpl extends EgovAbstractServiceImpl implements Resp
             if (q == null || a.getValues() == null || a.getValues().isEmpty()) continue;
             String first = a.getValues().get(0);
             switch (q.getType()) {
-                case "RADIO" -> {
+                case "RADIO", "DROPDOWN" -> {
                     int pos = q.getOptions() == null ? -1 : q.getOptions().indexOf(first);
                     if (pos >= 0) singleChoicePositions.add(pos);
                 }
@@ -148,9 +148,10 @@ public class ResponseServiceImpl extends EgovAbstractServiceImpl implements Resp
                 .filter(q -> !FormValidator.CONTENT_TYPES.contains(q.getType()))
                 .filter(q -> visitedSections.contains(q.getSectionId()))
                 .count();
+        Boolean attentionPassed = resolveAttention(questions, visitedSections, answerByQ);
         QualityJudge.Flag flag = qualityJudge.judge(
                 elapsedSeconds, Math.max(1, judgeCount),
-                singleChoicePositions, textValues, null);
+                singleChoicePositions, textValues, attentionPassed);
 
         String responseId = UUID.randomUUID().toString();
         String anonLabel = "익명-" + responseId.substring(0, 6);
@@ -174,8 +175,70 @@ public class ResponseServiceImpl extends EgovAbstractServiceImpl implements Resp
                     form.getOwnerId(), respondentId, form.getCostCredits(), responseId));
             reward = r.reward();
             formService.closeIfFull(formId);
+        } else {
+            applyGuardrail(formId);
         }
         return new SubmitResultVO(responseId, anonLabel, flag.value(), reward);
+    }
+
+    @Override
+    @Transactional
+    public void review(String formId, String responseId, String ownerId, String decision)
+            throws Exception {
+        if (!"pass".equals(decision) && !"reject".equals(decision)) {
+            throw PmsiException.badRequest("review.decision", "decision은 pass 또는 reject여야 합니다.");
+        }
+        FormVO form = formService.selectFormForUpdate(formId);
+        if (!form.getOwnerId().equals(ownerId)) {
+            throw PmsiException.forbidden("review.forbidden", "본인 폼의 응답만 검토할 수 있습니다.");
+        }
+        Map<String, Object> meta = responseDAO.selectResponseMeta(formId, responseId);
+        if (meta == null) {
+            throw PmsiException.notFound("response.notfound", "응답 없음: " + responseId);
+        }
+        if (!"hold".equals(meta.get("qualityFlag"))) {
+            throw PmsiException.conflict("review.not.hold", "hold 상태의 응답만 검토할 수 있습니다.");
+        }
+        responseDAO.updateQualityFlag(formId, responseId, decision);
+        if ("pass".equals(decision)) {
+            // 소급 정산 — ledger (EARN_RESPONSE, responseId) UNIQUE로 멱등
+            creditService.settle(new SettleCommand(
+                    form.getOwnerId(), (String) meta.get("respondentId"),
+                    form.getCostCredits(), responseId));
+            formService.closeIfFull(formId);
+        }
+    }
+
+    /** 가드레일: 최근 응답이 대부분 reject면 폼 자동 일시정지(PAUSED). 소유자가 재개 가능 */
+    static final int GUARDRAIL_WINDOW = 10;
+    static final int GUARDRAIL_REJECT_THRESHOLD = 8;
+
+    private void applyGuardrail(String formId) throws Exception {
+        List<String> recent = responseDAO.selectRecentQualityFlags(formId, GUARDRAIL_WINDOW);
+        if (recent == null || recent.size() < GUARDRAIL_WINDOW) return;
+        long rejects = recent.stream().filter("reject"::equals).count();
+        if (rejects >= GUARDRAIL_REJECT_THRESHOLD) {
+            formService.pauseForGuardrail(formId);
+        }
+    }
+
+    /**
+     * 주의 문항(attention_answer) 채점.
+     * @return null=주의 문항 없음 / true=모두 정답 / false=하나라도 오답
+     */
+    private Boolean resolveAttention(List<QuestionVO> questions, Set<String> visitedSections,
+                                     Map<String, AnswerVO> answerByQ) {
+        Boolean passed = null;
+        for (QuestionVO q : questions) {
+            if (q.getAttentionAnswer() == null || q.getAttentionAnswer().isBlank()) continue;
+            if (!visitedSections.contains(q.getSectionId())) continue;
+            AnswerVO a = answerByQ.get(q.getQuestionId());
+            String value = (a != null && a.getValues() != null && !a.getValues().isEmpty())
+                    ? a.getValues().get(0) : null;
+            boolean ok = q.getAttentionAnswer().equals(value);
+            passed = (passed == null) ? ok : (passed && ok);
+        }
+        return passed;
     }
 
     private void ensureActiveAccepting(FormVO form) throws Exception {

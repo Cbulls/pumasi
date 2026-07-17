@@ -9,8 +9,8 @@ import java.util.Map;
 /**
  * 질문 VO.
  *
- * 지원 유형: SHORT_TEXT, LONG_TEXT, RADIO, CHECKBOX, LINEAR_SCALE,
- *           DESCRIPTION, IMAGE, FILE.
+ * 지원 유형: SHORT_TEXT, LONG_TEXT, RADIO, CHECKBOX, DROPDOWN, LINEAR_SCALE,
+ *           RATING, DATE, DESCRIPTION, IMAGE, FILE.
  */
 public class QuestionVO {
     private String questionId;
@@ -46,6 +46,9 @@ public class QuestionVO {
      * DB에는 JSONB로 저장, API에서는 Map으로 주고받는다.
      */
     private Map<String, String> branchRules;
+
+    /** RADIO 전용 주의 문항 정답. 설정 시 응답 불일치 → 품질 reject */
+    private String attentionAnswer;
 
     public String getQuestionId() { return questionId; }
     public void setQuestionId(String questionId) { this.questionId = questionId; }
@@ -83,4 +86,6 @@ public class QuestionVO {
     public void setImageUrl(String imageUrl) { this.imageUrl = imageUrl; }
     public Map<String, String> getBranchRules() { return branchRules; }
     public void setBranchRules(Map<String, String> branchRules) { this.branchRules = branchRules; }
+    public String getAttentionAnswer() { return attentionAnswer; }
+    public void setAttentionAnswer(String attentionAnswer) { this.attentionAnswer = attentionAnswer; }
 }

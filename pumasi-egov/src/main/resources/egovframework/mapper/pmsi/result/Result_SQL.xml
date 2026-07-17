@@ -9,23 +9,23 @@
       unlocked = owner가 respondent 소유의 어떤 설문에든 응답을 제출한 경우.
     -->
 
-    <!-- 집계: pass + 상호응답 언락된 응답만 -->
+    <!-- 집계: pass + 상호응답 언락된 응답만. unlocked CTE 1회 계산(행별 EXISTS 제거) -->
     <select id="selectPassAnswersUnlocked" parameterType="map"
             resultType="egovframework.pmsi.result.service.impl.AnswerRow">
+        WITH unlocked AS (
+            SELECT DISTINCT mf.owner_id
+              FROM survey_response mine
+              JOIN form mf ON mf.id = mine.form_id
+             WHERE mine.respondent_id = #{ownerId}
+        )
         SELECT a.response_id AS response_id,
                a.question_id AS question_id,
                a.value       AS value
           FROM survey_response r
           JOIN survey_answer a ON a.response_id = r.id
+          JOIN unlocked u ON u.owner_id = r.respondent_id
          WHERE r.form_id = #{formId}
            AND r.quality_flag = 'pass'
-           AND EXISTS (
-                SELECT 1
-                  FROM survey_response mine
-                  JOIN form mf ON mf.id = mine.form_id
-                 WHERE mine.respondent_id = #{ownerId}
-                   AND mf.owner_id = r.respondent_id
-           )
     </select>
 
     <!-- 하위 호환용(미사용 가능). pass 전체 -->
@@ -88,6 +88,27 @@
            )
          ORDER BY f.created_at DESC
          LIMIT 1
+    </select>
+
+    <!-- 결과 KPI: 품질·언락 집계. unlocked CTE 1회 계산(행별 EXISTS 3회 제거) -->
+    <select id="selectResponseStats" parameterType="map"
+            resultType="egovframework.pmsi.result.service.impl.ResponseStats">
+        WITH unlocked AS (
+            SELECT DISTINCT mf.owner_id
+              FROM survey_response mine
+              JOIN form mf ON mf.id = mine.form_id
+             WHERE mine.respondent_id = #{ownerId}
+        )
+        SELECT COUNT(*)::int AS total_responses,
+               COUNT(*) FILTER (WHERE r.quality_flag = 'pass')::int AS pass_count,
+               COUNT(*) FILTER (WHERE r.quality_flag = 'hold')::int AS hold_count,
+               COUNT(*) FILTER (WHERE r.quality_flag = 'reject')::int AS reject_count,
+               COUNT(*) FILTER (WHERE u.owner_id IS NOT NULL)::int AS unlocked_count,
+               COUNT(*) FILTER (WHERE r.quality_flag = 'pass' AND u.owner_id IS NOT NULL)::int AS unlocked_pass_count,
+               COUNT(*) FILTER (WHERE u.owner_id IS NULL)::int AS locked_count
+          FROM survey_response r
+          LEFT JOIN unlocked u ON u.owner_id = r.respondent_id
+         WHERE r.form_id = #{formId}
     </select>
 
 </mapper>
