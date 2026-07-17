@@ -19,17 +19,64 @@
            AND expires_at > #{now}
     </select>
 
-    <!-- 로그아웃: 세션 무효화 -->
     <delete id="deleteSession" parameterType="string">
         DELETE FROM auth_session
          WHERE token = #{token}
     </delete>
 
-    <!-- 만료 세션 정리(로그인 시 해당 유저 것만) — 세션 행 무한 누적 방지 -->
     <delete id="deleteExpiredSessions" parameterType="map">
         DELETE FROM auth_session
          WHERE user_id = #{userId}
            AND expires_at &lt;= #{now}
     </delete>
+
+    <select id="selectUserIdByEmail" parameterType="string" resultType="string">
+        SELECT user_id
+          FROM user_account
+         WHERE lower(email) = lower(#{email})
+         LIMIT 1
+    </select>
+
+    <select id="selectUserProfile" parameterType="string" resultType="map">
+        SELECT user_id AS "userId",
+               display_name AS "displayName",
+               email AS "email"
+          FROM user_account
+         WHERE user_id = #{userId}
+    </select>
+
+    <insert id="insertUser" parameterType="map">
+        INSERT INTO user_account(user_id, display_name, email)
+        VALUES (#{userId}, #{displayName}, #{email})
+    </insert>
+
+    <insert id="insertMagicLink" parameterType="map">
+        INSERT INTO magic_link_token(token, email, user_id, expires_at)
+        VALUES (#{token}, #{email}, #{userId}, #{expiresAt})
+    </insert>
+
+    <select id="selectValidMagicLink" parameterType="map" resultType="map">
+        SELECT token AS "token",
+               email AS "email",
+               user_id AS "userId"
+          FROM magic_link_token
+         WHERE token = #{token}
+           AND consumed_at IS NULL
+           AND expires_at > #{now}
+    </select>
+
+    <update id="consumeMagicLink" parameterType="string">
+        UPDATE magic_link_token
+           SET consumed_at = now()
+         WHERE token = #{token}
+           AND consumed_at IS NULL
+    </update>
+
+    <update id="invalidateOpenMagicLinks" parameterType="string">
+        UPDATE magic_link_token
+           SET consumed_at = now()
+         WHERE lower(email) = lower(#{email})
+           AND consumed_at IS NULL
+    </update>
 
 </mapper>

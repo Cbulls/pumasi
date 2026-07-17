@@ -28,7 +28,6 @@ public class AuthDAO extends EgovAbstractMapper {
         getSqlSession().insert(NS + "insertSession", p);
     }
 
-    /** 유효(미만료) 세션의 userId, 없으면 null */
     public String selectValidUserId(String token, OffsetDateTime now) {
         Map<String, Object> p = new HashMap<>();
         p.put("token", token);
@@ -36,16 +35,54 @@ public class AuthDAO extends EgovAbstractMapper {
         return getSqlSession().selectOne(NS + "selectValidUserId", p);
     }
 
-    /** 로그아웃: 세션 삭제 */
     public void deleteSession(String token) {
         getSqlSession().delete(NS + "deleteSession", token);
     }
 
-    /** 해당 유저의 만료 세션 정리(로그인 시 호출) */
     public void deleteExpiredSessions(String userId, OffsetDateTime now) {
         Map<String, Object> p = new HashMap<>();
         p.put("userId", userId);
         p.put("now", now);
         getSqlSession().delete(NS + "deleteExpiredSessions", p);
+    }
+
+    public String selectUserIdByEmail(String email) {
+        return getSqlSession().selectOne(NS + "selectUserIdByEmail", email);
+    }
+
+    public Map<String, Object> selectUserProfile(String userId) {
+        return getSqlSession().selectOne(NS + "selectUserProfile", userId);
+    }
+
+    public void insertUser(String userId, String displayName, String email) {
+        Map<String, Object> p = new HashMap<>();
+        p.put("userId", userId);
+        p.put("displayName", displayName);
+        p.put("email", email);
+        getSqlSession().insert(NS + "insertUser", p);
+    }
+
+    public void insertMagicLink(String token, String email, String userId, OffsetDateTime expiresAt) {
+        Map<String, Object> p = new HashMap<>();
+        p.put("token", token);
+        p.put("email", email);
+        p.put("userId", userId);
+        p.put("expiresAt", expiresAt);
+        getSqlSession().insert(NS + "insertMagicLink", p);
+    }
+
+    public Map<String, Object> selectValidMagicLink(String token, OffsetDateTime now) {
+        Map<String, Object> p = new HashMap<>();
+        p.put("token", token);
+        p.put("now", now);
+        return getSqlSession().selectOne(NS + "selectValidMagicLink", p);
+    }
+
+    public void consumeMagicLink(String token) {
+        getSqlSession().update(NS + "consumeMagicLink", token);
+    }
+
+    public void invalidateOpenMagicLinks(String email) {
+        getSqlSession().update(NS + "invalidateOpenMagicLinks", email);
     }
 }

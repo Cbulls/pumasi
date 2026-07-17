@@ -10,7 +10,6 @@ import {
 } from "react";
 import { apiFetch } from "@/lib/api";
 
-// 데모 계정(백엔드 user_account seed). 비밀번호 없이 계정 선택 로그인.
 export interface DemoUser {
   id: string;
   label: string;
@@ -23,6 +22,9 @@ export const DEMO_USERS: DemoUser[] = [
   { id: "u-bob", label: "응답자 밥 (u-bob)", role: "respondent" },
 ];
 
+/** 데모 계정 스위처·자동 로그인 허용 */
+export const DEMO_AUTH = process.env.NEXT_PUBLIC_DEMO_AUTH !== "false";
+
 interface LoginResult {
   token: string;
   userId: string;
@@ -32,9 +34,18 @@ interface LoginResult {
 interface CurrentUserContextValue {
   userId: string | null;
   token: string | null;
-  ready: boolean; // 로그인(토큰 확보) 완료 여부
+  ready: boolean;
   users: DemoUser[];
+  demoAuth: boolean;
   switchUser: (id: string) => Promise<void>;
+  loginWithMagicToken: (token: string) => Promise<void>;
+  requestMagicLink: (email: string, displayName?: string) => Promise<{
+    email: string;
+    expiresAt: string;
+    echoedToken?: string;
+    message: string;
+  }>;
+  logout: () => Promise<void>;
 }
 
 const CurrentUserContext = createContext<CurrentUserContextValue | null>(null);
@@ -45,39 +56,108 @@ const TOKEN_KEY = "pumasi.token";
 export function CurrentUserProvider({ children }: { children: ReactNode }) {
   const [userId, setUserId] = useState<string | null>(null);
   const [token, setToken] = useState<string | null>(null);
+  const [ready, setReady] = useState(false);
 
-  const switchUser = useCallback(async (id: string) => {
-    // 계정 선택 = 해당 계정으로 로그인해 토큰 발급
-    const res = await apiFetch<LoginResult>("/pmsi/auth/login", {
-      method: "POST",
-      body: { userId: id },
-    });
-    setUserId(res.userId);
-    setToken(res.token);
-    window.localStorage.setItem(USER_KEY, res.userId);
-    window.localStorage.setItem(TOKEN_KEY, res.token);
+  const persist = useCallback((uid: string, tok: string) => {
+    setUserId(uid);
+    setToken(tok);
+    window.localStorage.setItem(USER_KEY, uid);
+    window.localStorage.setItem(TOKEN_KEY, tok);
   }, []);
 
-  // 최초 진입: 저장된 토큰을 서버에 검증(/auth/me)한 뒤 복원.
-  // 만료·무효 토큰이면 즉시 재로그인해 첫 API 호출에서 401이 나는 것을 방지한다.
+  const clear = useCallback(() => {
+    setUserId(null);
+    setToken(null);
+    window.localStorage.removeItem(USER_KEY);
+    window.localStorage.removeItem(TOKEN_KEY);
+  }, []);
+
+  const switchUser = useCallback(
+    async (id: string) => {
+      const res = await apiFetch<LoginResult>("/pmsi/auth/login", {
+        method: "POST",
+        body: { userId: id },
+      });
+      persist(res.userId, res.token);
+    },
+    [persist]
+  );
+
+  const loginWithMagicToken = useCallback(
+    async (magicToken: string) => {
+      const res = await apiFetch<LoginResult>("/pmsi/auth/magic-link/verify", {
+        method: "POST",
+        body: { token: magicToken },
+      });
+      persist(res.userId, res.token);
+    },
+    [persist]
+  );
+
+  const requestMagicLink = useCallback(async (email: string, displayName?: string) => {
+    return apiFetch<{
+      email: string;
+      expiresAt: string;
+      echoedToken?: string;
+      message: string;
+    }>("/pmsi/auth/magic-link/request", {
+      method: "POST",
+      body: { email, displayName },
+    });
+  }, []);
+
+  const logout = useCallback(async () => {
+    const saved = window.localStorage.getItem(TOKEN_KEY);
+    if (saved) {
+      try {
+        await apiFetch<void>("/pmsi/auth/logout", { method: "POST", token: saved });
+      } catch {
+        /* ignore */
+      }
+    }
+    clear();
+  }, [clear]);
+
   useEffect(() => {
     const savedUser = window.localStorage.getItem(USER_KEY);
     const savedToken = window.localStorage.getItem(TOKEN_KEY);
-    if (savedUser && savedToken) {
-      apiFetch<{ userId: string }>("/pmsi/auth/me", { token: savedToken })
-        .then((me) => {
+    const boot = async () => {
+      if (savedUser && savedToken) {
+        try {
+          const me = await apiFetch<{ userId: string }>("/pmsi/auth/me", {
+            token: savedToken,
+          });
           setUserId(me.userId);
           setToken(savedToken);
-        })
-        .catch(() => void switchUser(savedUser));
-    } else {
-      void switchUser(DEMO_USERS[0].id);
-    }
-  }, [switchUser]);
+          return;
+        } catch {
+          clear();
+        }
+      }
+      if (DEMO_AUTH) {
+        try {
+          await switchUser(DEMO_USERS[0].id);
+        } catch {
+          clear();
+        }
+      }
+    };
+    void boot().finally(() => setReady(true));
+  }, [switchUser, clear]);
 
   return (
     <CurrentUserContext.Provider
-      value={{ userId, token, ready: !!token, users: DEMO_USERS, switchUser }}
+      value={{
+        userId,
+        token,
+        ready,
+        users: DEMO_USERS,
+        demoAuth: DEMO_AUTH,
+        switchUser,
+        loginWithMagicToken,
+        requestMagicLink,
+        logout,
+      }}
     >
       {children}
     </CurrentUserContext.Provider>

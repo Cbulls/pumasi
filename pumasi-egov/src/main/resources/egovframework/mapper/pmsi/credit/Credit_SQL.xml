@@ -72,4 +72,17 @@
         VALUES (#{userId}, #{delta}, #{reason}, #{refId}, 1)
     </insert>
 
+    <select id="selectLedger" parameterType="map" resultType="map">
+        SELECT id AS "id",
+               user_id AS "userId",
+               delta AS "delta",
+               reason AS "reason",
+               ref_id AS "refId",
+               created_at AS "createdAt"
+          FROM credit_ledger
+         WHERE user_id = #{userId}
+         ORDER BY created_at DESC
+         LIMIT #{limit}
+    </select>
+
 </mapper>

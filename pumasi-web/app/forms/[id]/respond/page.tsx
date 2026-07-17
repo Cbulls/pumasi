@@ -192,11 +192,16 @@ export default function RespondPage({ params }: { params: { id: string } }) {
 
   if (result) {
     const ui = FLAG_UI[result.qualityFlag];
+    const custom =
+      form?.confirmationMessage && form.confirmationMessage.trim()
+        ? form.confirmationMessage.trim()
+        : null;
     return (
       <div className="mx-auto max-w-lg space-y-4 text-center">
         <div className="card space-y-3">
           <span className={`badge mx-auto ${ui.cls}`}>{ui.label}</span>
           <h1 className="text-xl font-extrabold">응답이 제출되었습니다</h1>
+          {custom && <p className="text-sm font-medium text-slate-700">{custom}</p>}
           <p className="text-sm text-slate-500">{ui.desc}</p>
           <p className="text-3xl font-extrabold text-brand">+{result.rewardCredited} 크레딧</p>
           <div className="flex justify-center gap-2">

@@ -3,6 +3,7 @@ package egovframework.pmsi.form.service.impl;
 import egovframework.pmsi.form.service.QuestionVO;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -14,13 +15,15 @@ public class FormValidator {
 
     public static final Set<String> SUPPORTED_TYPES = Set.of(
             "SHORT_TEXT", "LONG_TEXT", "RADIO", "CHECKBOX", "DROPDOWN",
-            "LINEAR_SCALE", "RATING", "DATE",
+            "LINEAR_SCALE", "RATING", "DATE", "TIME",
+            "MULTIPLE_CHOICE_GRID", "CHECKBOX_GRID",
             "DESCRIPTION", "IMAGE", "FILE");
 
     /** 응답·비용 산출에서 제외되는 안내 블록 */
     public static final Set<String> CONTENT_TYPES = Set.of("DESCRIPTION", "IMAGE");
 
     private static final Set<String> CHOICE_TYPES = Set.of("RADIO", "CHECKBOX", "DROPDOWN");
+    private static final Set<String> GRID_TYPES = Set.of("MULTIPLE_CHOICE_GRID", "CHECKBOX_GRID");
     private static final Set<String> TEXT_TYPES = Set.of("SHORT_TEXT", "LONG_TEXT");
     /** 척도 범위(scaleMin/Max)를 쓰는 유형 */
     private static final Set<String> SCALE_TYPES = Set.of("LINEAR_SCALE", "RATING");
@@ -38,18 +41,22 @@ public class FormValidator {
         }
 
         boolean isChoice = CHOICE_TYPES.contains(type);
+        boolean isGrid = GRID_TYPES.contains(type);
         int optCount = q.getOptions() == null ? 0 : q.getOptions().size();
 
         if (CONTENT_TYPES.contains(type) || "FILE".equals(type)) {
             if (optCount > 0) errors.add(type + " 유형은 보기(options)를 가질 수 없습니다.");
             if (q.getMinSelect() != null || q.getMaxSelect() != null) {
-                errors.add("선택 개수 제한은 CHECKBOX에서만 사용할 수 있습니다.");
+                errors.add("선택 개수 제한은 CHECKBOX/CHECKBOX_GRID에서만 사용할 수 있습니다.");
             }
             if (q.getMinLength() != null || q.getMaxLength() != null) {
                 errors.add("글자수 제한은 텍스트형에서만 사용할 수 있습니다.");
             }
             if (q.getScaleMin() != null || q.getScaleMax() != null) {
                 errors.add("척도 범위는 LINEAR_SCALE/RATING에서만 사용할 수 있습니다.");
+            }
+            if (q.getRowLabels() != null && !q.getRowLabels().isEmpty()) {
+                errors.add("행 라벨은 그리드 유형에서만 사용할 수 있습니다.");
             }
         }
 
@@ -69,15 +76,24 @@ public class FormValidator {
             // bodyHtml은 선택(제목만으로도 가능)
         }
 
+        if (isGrid) {
+            validateGrid(q, errors);
+        } else if (q.getRowLabels() != null && !q.getRowLabels().isEmpty()) {
+            if (!CONTENT_TYPES.contains(type) && !"FILE".equals(type)) {
+                errors.add("행 라벨은 그리드 유형에서만 사용할 수 있습니다.");
+            }
+        }
+
         if (isChoice) {
             if (optCount < 2) {
                 errors.add("선택형 질문은 보기가 2개 이상이어야 합니다.");
             }
-        } else if (optCount > 0 && !CONTENT_TYPES.contains(type) && !"FILE".equals(type)) {
+            validateLabels(q.getOptions(), "보기", errors);
+        } else if (optCount > 0 && !CONTENT_TYPES.contains(type) && !"FILE".equals(type) && !isGrid) {
             errors.add(type + " 유형은 보기(options)를 가질 수 없습니다.");
         }
 
-        if ("CHECKBOX".equals(type)) {
+        if ("CHECKBOX".equals(type) || "CHECKBOX_GRID".equals(type)) {
             Integer min = q.getMinSelect();
             Integer max = q.getMaxSelect();
             if (min != null && min < 0) errors.add("minSelect는 0 이상이어야 합니다.");
@@ -85,12 +101,15 @@ public class FormValidator {
             if (min != null && max != null && min > max) {
                 errors.add("minSelect는 maxSelect보다 클 수 없습니다.");
             }
-            if (max != null && optCount > 0 && max > optCount) {
+            if ("CHECKBOX".equals(type) && max != null && optCount > 0 && max > optCount) {
                 errors.add("maxSelect는 보기 개수를 초과할 수 없습니다.");
+            }
+            if ("CHECKBOX_GRID".equals(type) && max != null && optCount > 0 && max > optCount) {
+                errors.add("maxSelect는 열(보기) 개수를 초과할 수 없습니다.");
             }
         } else if (q.getMinSelect() != null || q.getMaxSelect() != null) {
             if (!CONTENT_TYPES.contains(type) && !"FILE".equals(type)) {
-                errors.add("선택 개수 제한은 CHECKBOX에서만 사용할 수 있습니다.");
+                errors.add("선택 개수 제한은 CHECKBOX/CHECKBOX_GRID에서만 사용할 수 있습니다.");
             }
         }
 
@@ -137,6 +156,39 @@ public class FormValidator {
         }
 
         return errors;
+    }
+
+    private void validateGrid(QuestionVO q, List<String> errors) {
+        List<String> rows = q.getRowLabels();
+        int rowCount = rows == null ? 0 : rows.size();
+        int colCount = q.getOptions() == null ? 0 : q.getOptions().size();
+        if (rowCount < 1) {
+            errors.add("그리드 질문은 행이 1개 이상이어야 합니다.");
+        }
+        if (colCount < 2) {
+            errors.add("그리드 질문은 열이 2개 이상이어야 합니다.");
+        }
+        validateLabels(rows, "행", errors);
+        validateLabels(q.getOptions(), "열", errors);
+    }
+
+    /** 빈값·중복·구분자 '=' 금지 (비교는 trim 기준) */
+    private void validateLabels(List<String> labels, String kind, List<String> errors) {
+        if (labels == null) return;
+        Set<String> seen = new HashSet<>();
+        for (String raw : labels) {
+            if (raw == null || raw.isBlank()) {
+                errors.add(kind + " 라벨은 비어 있을 수 없습니다.");
+                continue;
+            }
+            String label = raw.trim();
+            if (label.contains("=")) {
+                errors.add(kind + " 라벨에 '='를 포함할 수 없습니다.");
+            }
+            if (!seen.add(label)) {
+                errors.add(kind + " 라벨이 중복됩니다: " + label);
+            }
+        }
     }
 
     /** 분기 규칙의 sectionId가 유효한지(같은 폼, 현재보다 뒤 섹션) 검사 */

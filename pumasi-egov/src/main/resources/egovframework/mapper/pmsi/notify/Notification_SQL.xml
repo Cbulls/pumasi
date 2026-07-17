@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="notificationMapper">
+
+    <insert id="insert" parameterType="map">
+        INSERT INTO user_notification(id, user_id, type, title, body, link_url, ref_id)
+        VALUES (#{id}, #{userId}, #{type}, #{title}, #{body}, #{linkUrl}, #{refId})
+    </insert>
+
+    <select id="selectByUser" parameterType="map" resultType="map">
+        SELECT id AS "id",
+               user_id AS "userId",
+               type AS "type",
+               title AS "title",
+               body AS "body",
+               link_url AS "linkUrl",
+               ref_id AS "refId",
+               read_at AS "readAt",
+               created_at AS "createdAt"
+          FROM user_notification
+         WHERE user_id = #{userId}
+        <if test="unreadOnly">
+           AND read_at IS NULL
+        </if>
+         ORDER BY created_at DESC
+         LIMIT #{limit}
+    </select>
+
+    <select id="countUnread" parameterType="string" resultType="int">
+        SELECT COUNT(1)::int
+          FROM user_notification
+         WHERE user_id = #{userId}
+           AND read_at IS NULL
+    </select>
+
+    <update id="markRead" parameterType="map">
+        UPDATE user_notification
+           SET read_at = now()
+         WHERE id = #{id}
+           AND user_id = #{userId}
+           AND read_at IS NULL
+    </update>
+
+    <update id="markAllRead" parameterType="string">
+        UPDATE user_notification
+           SET read_at = now()
+         WHERE user_id = #{userId}
+           AND read_at IS NULL
+    </update>
+
+</mapper>

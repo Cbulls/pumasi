@@ -11,6 +11,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import javax.annotation.Resource;
+import java.util.List;
+import java.util.Map;
 
 /**
  * 크레딧 정산 서비스 구현체.
@@ -147,5 +149,11 @@ public class CreditServiceImpl extends EgovAbstractServiceImpl implements Credit
             creditDAO.insertLedger(userId, amount, PURCHASE, refId);
         }
         return getBalance(userId);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<Map<String, Object>> ledger(String userId, int limit) throws Exception {
+        return creditDAO.selectLedger(userId, Math.min(Math.max(limit, 1), 100));
     }
 }

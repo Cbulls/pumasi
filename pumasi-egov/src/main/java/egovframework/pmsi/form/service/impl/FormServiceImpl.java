@@ -6,6 +6,8 @@ import egovframework.pmsi.form.service.FormService;
 import egovframework.pmsi.form.service.FormVO;
 import egovframework.pmsi.form.service.QuestionVO;
 import egovframework.pmsi.form.service.SectionVO;
+import egovframework.pmsi.notify.service.NotificationService;
+import egovframework.pmsi.notify.service.impl.NotificationServiceImpl;
 import org.egovframe.rte.fdl.cmmn.EgovAbstractServiceImpl;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -27,6 +29,9 @@ public class FormServiceImpl extends EgovAbstractServiceImpl implements FormServ
 
     @Resource(name = "creditService")
     private CreditService creditService;
+
+    @Resource(name = "notificationService")
+    private NotificationService notificationService;
 
     private final FormValidator validator = new FormValidator();
 
@@ -64,6 +69,11 @@ public class FormServiceImpl extends EgovAbstractServiceImpl implements FormServ
         }
         if (patch.getMaxResponses() > 0) {
             form.setMaxResponses(patch.getMaxResponses());
+        }
+        // null = 필드 미전송 유지, "" = 메시지 지우기
+        if (patch.getConfirmationMessage() != null) {
+            String msg = patch.getConfirmationMessage().trim();
+            form.setConfirmationMessage(msg.isEmpty() ? null : msg);
         }
         form.setClosesAt(patch.getClosesAt());
         formDAO.updateForm(form);
@@ -311,10 +321,13 @@ public class FormServiceImpl extends EgovAbstractServiceImpl implements FormServ
 
     @Override
     @Transactional(readOnly = true)
-    public List<FormVO> selectActiveFeed(String viewerId, int page, int size) throws Exception {
+    public List<FormVO> selectActiveFeed(String viewerId, int page, int size,
+                                         Integer maxMinutes, Long minReward, boolean reciprocalOnly)
+            throws Exception {
         int safeSize = Math.min(Math.max(size, 1), 50);
         int safePage = Math.max(page, 0);
-        return formDAO.selectActiveFeed(viewerId, safeSize, safePage * safeSize);
+        return formDAO.selectActiveFeed(viewerId, safeSize, safePage * safeSize,
+                maxMinutes, minReward, reciprocalOnly);
     }
 
     @Override
@@ -336,7 +349,34 @@ public class FormServiceImpl extends EgovAbstractServiceImpl implements FormServ
     @Override
     @Transactional
     public void pauseForGuardrail(String formId) throws Exception {
+        FormVO form = formDAO.selectForm(formId);
         formDAO.pause(formId);
+        if (form != null) {
+            notificationService.notify(
+                    form.getOwnerId(),
+                    NotificationServiceImpl.FORM_PAUSED,
+                    "설문이 일시정지되었습니다",
+                    "최근 응답 품질이 낮아 '" + form.getTitle() + "'이(가) 자동 일시정지되었습니다. 재개할 수 있습니다.",
+                    "/home",
+                    formId);
+        }
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Map<String, Object> unlockOpportunities(String viewerId, int limit) throws Exception {
+        int safe = Math.min(Math.max(limit, 1), 50);
+        List<Map<String, Object>> items = formDAO.selectUnlockOpportunities(viewerId, safe);
+        Map<String, Object> out = new HashMap<>();
+        out.put("count", formDAO.countUnlockOpportunities(viewerId));
+        out.put("items", items);
+        return out;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<Map<String, Object>> myResponseActivity(String userId, int limit) throws Exception {
+        return formDAO.selectMyResponseActivity(userId, Math.min(Math.max(limit, 1), 100));
     }
 
     @Override
@@ -345,7 +385,9 @@ public class FormServiceImpl extends EgovAbstractServiceImpl implements FormServ
         List<QuestionVO> questions = formDAO.selectQuestions(formId);
         for (QuestionVO q : questions) {
             if ("RADIO".equals(q.getType()) || "CHECKBOX".equals(q.getType())
-                    || "DROPDOWN".equals(q.getType())) {
+                    || "DROPDOWN".equals(q.getType())
+                    || "MULTIPLE_CHOICE_GRID".equals(q.getType())
+                    || "CHECKBOX_GRID".equals(q.getType())) {
                 q.setOptions(formDAO.selectOptionLabels(q.getQuestionId()));
             }
         }

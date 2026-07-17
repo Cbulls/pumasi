@@ -26,4 +26,7 @@ public interface CreditService {
      * 실PG 도입 시 webhook에서 같은 포트를 호출한다.
      */
     CreditBalanceVO purchase(String userId, long amount, String refId) throws Exception;
+
+    /** 본인 원장 최근 내역 */
+    java.util.List<java.util.Map<String, Object>> ledger(String userId, int limit) throws Exception;
 }

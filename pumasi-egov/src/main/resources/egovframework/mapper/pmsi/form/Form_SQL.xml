@@ -13,6 +13,7 @@
         <result property="maxResponses" column="max_responses"/>
         <result property="closesAt"     column="closes_at"/>
         <result property="shareToken"   column="share_token"/>
+        <result property="confirmationMessage" column="confirmation_message"/>
     </resultMap>
 
     <resultMap id="sectionMap" type="egovframework.pmsi.form.service.SectionVO">
@@ -40,6 +41,10 @@
         <result property="bodyHtml"   column="body_html"/>
         <result property="imageUrl"   column="image_url"/>
         <result property="attentionAnswer" column="attention_answer"/>
+        <result property="allowOther" column="allow_other"/>
+        <result property="shuffleOptions" column="shuffle_options"/>
+        <result property="rowLabels" column="row_labels"
+                typeHandler="egovframework.pmsi.form.service.impl.JsonListTypeHandler"/>
         <result property="branchRules" column="branch_rules"
                 typeHandler="egovframework.pmsi.form.service.impl.JsonMapTypeHandler"/>
     </resultMap>
@@ -55,6 +60,7 @@
                description = #{description},
                max_responses = #{maxResponses},
                closes_at = #{closesAt},
+               confirmation_message = #{confirmationMessage},
                updated_at = now()
          WHERE id = #{formId}
     </update>
@@ -107,19 +113,22 @@
     </select>
 
     <select id="selectForm" parameterType="string" resultMap="formMap">
-        SELECT id, owner_id, title, description, status, cost_credits, max_responses, closes_at, share_token
+        SELECT id, owner_id, title, description, status, cost_credits, max_responses, closes_at, share_token,
+               confirmation_message
           FROM form
          WHERE id = #{formId}
     </select>
 
     <select id="selectFormByShareToken" parameterType="string" resultMap="formMap">
-        SELECT id, owner_id, title, description, status, cost_credits, max_responses, closes_at, share_token
+        SELECT id, owner_id, title, description, status, cost_credits, max_responses, closes_at, share_token,
+               confirmation_message
           FROM form
          WHERE share_token = #{shareToken}
     </select>
 
     <select id="selectFormForUpdate" parameterType="string" resultMap="formMap">
-        SELECT id, owner_id, title, description, status, cost_credits, max_responses, closes_at, share_token
+        SELECT id, owner_id, title, description, status, cost_credits, max_responses, closes_at, share_token,
+               confirmation_message
           FROM form
          WHERE id = #{formId}
         FOR UPDATE
@@ -133,7 +142,8 @@
     </select>
 
     <select id="selectFormList" parameterType="string" resultMap="formMap">
-        SELECT id, owner_id, title, description, status, cost_credits, max_responses, closes_at, share_token
+        SELECT id, owner_id, title, description, status, cost_credits, max_responses, closes_at, share_token,
+               confirmation_message
           FROM form
          WHERE owner_id = #{ownerId}
          ORDER BY created_at DESC
@@ -172,11 +182,92 @@
                  WHERE r.form_id = f.id
                    AND r.respondent_id = #{viewerId}
            )
+        <if test="maxMinutes != null">
+           AND f.cost_credits &lt;= #{maxMinutes}
+        </if>
+        <if test="minReward != null">
+           AND (f.cost_credits * 8 / 10) &gt;= #{minReward}
+        </if>
+        <if test="reciprocalOnly">
+           AND rc.owner_id IS NOT NULL
+        </if>
          ORDER BY
            CASE WHEN rc.owner_id IS NOT NULL THEN 0 ELSE 1 END,
            COALESCE(pc.pass_count, 0)::float / f.max_responses ASC,
            f.created_at DESC
          LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <!-- 나를 언락해 줄 설문: 내 설문에 답한 사람의 ACTIVE 설문 중 아직 미응답 -->
+    <select id="selectUnlockOpportunities" parameterType="map" resultType="map">
+        WITH pass_counts AS (
+            SELECT form_id, COUNT(*)::int AS pass_count
+              FROM survey_response
+             WHERE quality_flag = 'pass'
+             GROUP BY form_id
+        )
+        SELECT DISTINCT ON (f.id)
+               f.id AS "formId",
+               f.title AS "title",
+               f.owner_id AS "ownerId",
+               f.cost_credits AS "costCredits",
+               f.share_token AS "shareToken"
+          FROM survey_response r
+          JOIN form myf ON myf.id = r.form_id AND myf.owner_id = #{viewerId}
+          JOIN form f ON f.owner_id = r.respondent_id AND f.status = 'ACTIVE'
+          LEFT JOIN pass_counts pc ON pc.form_id = f.id
+         WHERE (f.closes_at IS NULL OR f.closes_at > now())
+           AND COALESCE(pc.pass_count, 0) &lt; f.max_responses
+           AND NOT EXISTS (
+                SELECT 1 FROM survey_response r2
+                 WHERE r2.form_id = f.id AND r2.respondent_id = #{viewerId}
+           )
+         ORDER BY f.id, f.created_at DESC
+         LIMIT #{limit}
+    </select>
+
+    <select id="countUnlockOpportunities" parameterType="string" resultType="int">
+        SELECT COUNT(DISTINCT f.id)::int
+          FROM survey_response r
+          JOIN form myf ON myf.id = r.form_id AND myf.owner_id = #{viewerId}
+          JOIN form f ON f.owner_id = r.respondent_id AND f.status = 'ACTIVE'
+         WHERE (f.closes_at IS NULL OR f.closes_at > now())
+           AND NOT EXISTS (
+                SELECT 1 FROM survey_response r2
+                 WHERE r2.form_id = f.id AND r2.respondent_id = #{viewerId}
+           )
+    </select>
+
+    <!-- 내가 응답한 설문 이력 -->
+    <select id="selectMyResponseActivity" parameterType="map" resultType="map">
+        SELECT r.id AS "responseId",
+               r.form_id AS "formId",
+               f.title AS "formTitle",
+               f.owner_id AS "ownerId",
+               r.quality_flag AS "qualityFlag",
+               r.anon_label AS "anonLabel",
+               r.submitted_at AS "submittedAt",
+               f.cost_credits AS "costCredits"
+          FROM survey_response r
+          JOIN form f ON f.id = r.form_id
+         WHERE r.respondent_id = #{userId}
+         ORDER BY r.submitted_at DESC
+         LIMIT #{limit}
+    </select>
+
+    <!-- 응답자 소유의 ACTIVE 설문 1건 (언락 알림용) -->
+    <select id="selectActiveFormByOwner" parameterType="map" resultType="map">
+        SELECT f.id AS "formId", f.title AS "title"
+          FROM form f
+         WHERE f.owner_id = #{ownerId}
+           AND f.status = 'ACTIVE'
+           AND (f.closes_at IS NULL OR f.closes_at > now())
+           AND NOT EXISTS (
+                SELECT 1 FROM survey_response r
+                 WHERE r.form_id = f.id AND r.respondent_id = #{viewerId}
+           )
+         ORDER BY f.created_at DESC
+         LIMIT 1
     </select>
 
     <!-- 가드레일: PAUSED ← ACTIVE -->
@@ -215,7 +306,8 @@
     <select id="selectQuestion" parameterType="map" resultMap="questionMap">
         SELECT id, section_id, form_id, type, title, required, order_index,
                min_select, max_select, min_length, max_length, regex, scale_min, scale_max,
-               body_html, image_url, attention_answer, branch_rules
+               body_html, image_url, attention_answer, allow_other, shuffle_options,
+               row_labels, branch_rules
           FROM form_question
          WHERE id = #{questionId}
            AND form_id = #{formId}
@@ -225,11 +317,14 @@
         INSERT INTO form_question(
             id, section_id, form_id, type, title, required, order_index,
             min_select, max_select, min_length, max_length, regex, scale_min, scale_max,
-            body_html, image_url, attention_answer, branch_rules)
+            body_html, image_url, attention_answer, allow_other, shuffle_options,
+            row_labels, branch_rules)
         VALUES (
             #{questionId}, #{sectionId}, #{formId}, #{type}, #{title}, #{required}, #{orderIndex},
             #{minSelect}, #{maxSelect}, #{minLength}, #{maxLength}, #{regex}, #{scaleMin}, #{scaleMax},
             #{bodyHtml}, #{imageUrl}, #{attentionAnswer},
+            COALESCE(#{allowOther}, false), COALESCE(#{shuffleOptions}, false),
+            #{rowLabels, typeHandler=egovframework.pmsi.form.service.impl.JsonListTypeHandler},
             #{branchRules, typeHandler=egovframework.pmsi.form.service.impl.JsonMapTypeHandler})
     </insert>
 
@@ -249,6 +344,9 @@
                body_html = #{bodyHtml},
                image_url = #{imageUrl},
                attention_answer = #{attentionAnswer},
+               allow_other = COALESCE(#{allowOther}, false),
+               shuffle_options = COALESCE(#{shuffleOptions}, false),
+               row_labels = #{rowLabels, typeHandler=egovframework.pmsi.form.service.impl.JsonListTypeHandler},
                branch_rules = #{branchRules, typeHandler=egovframework.pmsi.form.service.impl.JsonMapTypeHandler}
          WHERE id = #{questionId}
            AND form_id = #{formId}
@@ -297,7 +395,8 @@
     <select id="selectQuestions" parameterType="string" resultMap="questionMap">
         SELECT id, section_id, form_id, type, title, required, order_index,
                min_select, max_select, min_length, max_length, regex, scale_min, scale_max,
-               body_html, image_url, attention_answer, branch_rules
+               body_html, image_url, attention_answer, allow_other, shuffle_options,
+               row_labels, branch_rules
           FROM form_question
          WHERE form_id = #{formId}
          ORDER BY order_index ASC

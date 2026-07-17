@@ -9,6 +9,9 @@ export type QuestionType =
   | "LINEAR_SCALE"
   | "RATING"
   | "DATE"
+  | "TIME"
+  | "MULTIPLE_CHOICE_GRID"
+  | "CHECKBOX_GRID"
   | "DESCRIPTION"
   | "IMAGE"
   | "FILE";
@@ -25,6 +28,7 @@ export interface FormVO {
   maxResponses: number;
   closesAt?: string | null;
   shareToken?: string | null;
+  confirmationMessage?: string | null;
 }
 
 export interface SectionVO {
@@ -44,6 +48,8 @@ export interface QuestionVO {
   required: boolean;
   orderIndex: number;
   options?: string[];
+  /** 그리드 행 라벨. 열은 options. */
+  rowLabels?: string[] | null;
   minSelect?: number | null;
   maxSelect?: number | null;
   minLength?: number | null;
@@ -56,6 +62,8 @@ export interface QuestionVO {
   branchRules?: Record<string, string> | null;
   /** RADIO 전용 주의 문항 정답. 응답이 다르면 품질 reject */
   attentionAnswer?: string | null;
+  allowOther?: boolean | null;
+  shuffleOptions?: boolean | null;
 }
 
 export interface AnswerVO {
@@ -87,7 +95,15 @@ export interface ChartItem {
   title: string;
   type: QuestionType;
   sectionId?: string | null;
-  chartType: "pie" | "bar" | "histogram" | "text_list" | "text_freq" | "file_list" | "unsupported";
+  chartType:
+    | "pie"
+    | "bar"
+    | "histogram"
+    | "text_list"
+    | "text_freq"
+    | "file_list"
+    | "matrix"
+    | "unsupported";
   counts: Record<string, number>;
   ratios: Record<string, number>;
   respondentCount: number;
@@ -95,6 +111,8 @@ export interface ChartItem {
   median: number;
   textResponses: string[];
   ratioSumMayExceed100?: boolean;
+  rowLabels?: string[];
+  columnLabels?: string[];
 }
 
 export interface ResultsSummary {
@@ -114,19 +132,19 @@ export interface ResultsPayload {
 }
 
 export interface ResponsesTable {
-  questions: { questionId: string; title: string; type: QuestionType }[];
-  rows: {
+  questions: Array<{ questionId: string; title: string; type: string }>;
+  rows: Array<{
     responseId?: string;
     anonLabel: string;
-    qualityFlag: "pass" | "hold" | "reject";
+    qualityFlag: string;
     submittedAt: string;
-    answers: Record<string, string>;
     unlocked?: boolean;
     unlockHint?: string;
     unlockFormId?: string;
     unlockFormTitle?: string;
-    unlockShareToken?: string | null;
-  }[];
+    unlockShareToken?: string;
+    answers: Record<string, string>;
+  }>;
   unlockedCount?: number;
   lockedCount?: number;
   reciprocityRule?: string;

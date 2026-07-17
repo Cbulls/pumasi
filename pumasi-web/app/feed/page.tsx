@@ -1,12 +1,26 @@
 "use client";
 
 import Link from "next/link";
-import { useFeed } from "@/lib/hooks";
+import { useMemo, useState } from "react";
+import { useFeed, type FeedFilters } from "@/lib/hooks";
 import { rewardPreview } from "@/lib/format";
 
 export default function FeedPage() {
+  const [maxMinutes, setMaxMinutes] = useState<string>("");
+  const [minReward, setMinReward] = useState<string>("");
+  const [reciprocalOnly, setReciprocalOnly] = useState(false);
+
+  const filters: FeedFilters = useMemo(
+    () => ({
+      maxMinutes: maxMinutes ? Number(maxMinutes) : null,
+      minReward: minReward ? Number(minReward) : null,
+      reciprocalOnly,
+    }),
+    [maxMinutes, minReward, reciprocalOnly]
+  );
+
   const { data, isLoading, isError, error, fetchNextPage, hasNextPage, isFetchingNextPage } =
-    useFeed();
+    useFeed(filters);
   const forms = data?.pages.flat();
 
   return (
@@ -19,6 +33,43 @@ export default function FeedPage() {
         </p>
       </div>
 
+      <div className="flex flex-wrap items-end gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm">
+        <label className="flex flex-col gap-1">
+          <span className="text-xs text-slate-500">최대 소요(분)</span>
+          <select
+            className="rounded-lg border border-slate-300 bg-white px-2 py-1.5"
+            value={maxMinutes}
+            onChange={(e) => setMaxMinutes(e.target.value)}
+          >
+            <option value="">전체</option>
+            <option value="3">3분 이하</option>
+            <option value="5">5분 이하</option>
+            <option value="10">10분 이하</option>
+          </select>
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-xs text-slate-500">최소 보상</span>
+          <select
+            className="rounded-lg border border-slate-300 bg-white px-2 py-1.5"
+            value={minReward}
+            onChange={(e) => setMinReward(e.target.value)}
+          >
+            <option value="">전체</option>
+            <option value="1">1+</option>
+            <option value="2">2+</option>
+            <option value="5">5+</option>
+          </select>
+        </label>
+        <label className="flex items-center gap-2 pb-1.5">
+          <input
+            type="checkbox"
+            checked={reciprocalOnly}
+            onChange={(e) => setReciprocalOnly(e.target.checked)}
+          />
+          <span>상호 교환 가능만</span>
+        </label>
+      </div>
+
       {isLoading && <p className="text-slate-500">불러오는 중…</p>}
       {isError && (
         <p className="rounded-lg bg-red-50 p-3 text-sm text-red-600">
@@ -27,7 +78,7 @@ export default function FeedPage() {
       )}
       {forms && forms.length === 0 && (
         <div className="card text-center text-slate-500">
-          지금 응답할 수 있는 설문이 없습니다. 다른 계정으로 설문을 게시해 보세요.
+          조건에 맞는 설문이 없습니다. 필터를 바꾸거나 나중에 다시 확인해 보세요.
         </div>
       )}
 
@@ -44,7 +95,7 @@ export default function FeedPage() {
               <p className="line-clamp-2 text-sm text-slate-500">{f.description}</p>
             )}
             <div className="flex items-center gap-3 text-xs text-slate-500">
-              <span>⏱ 약 {f.costCredits}분</span>
+              <span>약 {f.costCredits}분</span>
               <span>제작자 {f.ownerId}</span>
             </div>
             <Link href={`/forms/${f.formId}/respond`} className="btn-primary mt-auto">

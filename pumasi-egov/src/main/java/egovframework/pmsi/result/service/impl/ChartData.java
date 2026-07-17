@@ -7,7 +7,7 @@ import java.util.Map;
 
 /** 차트 데이터(프론트 렌더용). */
 class ChartData {
-    String chartType; // pie / bar / histogram / text_freq / text_list / file_list / unsupported
+    String chartType; // pie / bar / histogram / text_freq / text_list / file_list / matrix / unsupported
     Map<String, Integer> counts = new LinkedHashMap<>();
     Map<String, Double> ratios = new LinkedHashMap<>();
     int respondentCount;

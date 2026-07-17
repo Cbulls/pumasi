@@ -87,6 +87,50 @@ class AnswerValidatorTest {
         assertFalse(validator.validate(List.of(d), List.of(answer("q1", "내일"))).isEmpty());
     }
 
+    private QuestionVO grid(String id, String type) {
+        QuestionVO q = question(id, type);
+        q.setRowLabels(List.of("맛", "양"));
+        q.setOptions(List.of("좋음", "보통", "나쁨"));
+        return q;
+    }
+
+    @Test
+    void multipleChoiceGrid_onePerRow() {
+        QuestionVO q = grid("q1", "MULTIPLE_CHOICE_GRID");
+        q.setRequired(true);
+        assertTrue(validator.validate(List.of(q),
+                List.of(answer("q1", "맛=좋음", "양=보통"))).isEmpty());
+        assertFalse(validator.validate(List.of(q),
+                List.of(answer("q1", "맛=좋음", "맛=보통"))).isEmpty());
+        assertFalse(validator.validate(List.of(q),
+                List.of(answer("q1", "맛=좋음"))).isEmpty());
+        assertFalse(validator.validate(List.of(q),
+                List.of(answer("q1", "맛-좋음"))).isEmpty());
+    }
+
+    @Test
+    void checkboxGrid_uniqueCellsAndPerRowMax() {
+        QuestionVO q = grid("q1", "CHECKBOX_GRID");
+        q.setMaxSelect(1);
+        assertTrue(validator.validate(List.of(q),
+                List.of(answer("q1", "맛=좋음", "양=나쁨"))).isEmpty());
+        assertFalse(validator.validate(List.of(q),
+                List.of(answer("q1", "맛=좋음", "맛=보통"))).isEmpty());
+        assertFalse(validator.validate(List.of(q),
+                List.of(answer("q1", "맛=좋음", "맛=좋음"))).isEmpty());
+    }
+
+    @Test
+    void checkboxGrid_perRowMin() {
+        QuestionVO q = grid("q1", "CHECKBOX_GRID");
+        q.setRequired(true);
+        q.setMinSelect(2);
+        assertFalse(validator.validate(List.of(q),
+                List.of(answer("q1", "맛=좋음", "양=좋음", "양=보통"))).isEmpty());
+        assertTrue(validator.validate(List.of(q),
+                List.of(answer("q1", "맛=좋음", "맛=보통", "양=좋음", "양=나쁨"))).isEmpty());
+    }
+
     @Test
     void radio_valueNotInOptions_error() {
         QuestionVO radio = question("q1", "RADIO");
@@ -158,5 +202,23 @@ class AnswerValidatorTest {
         text.setMinLength(2);
         List<String> errors = validator.validate(List.of(text), List.of(answer("q1", "")));
         assertTrue(errors.isEmpty());
+    }
+
+    @Test
+    void time_requiresHhMm() {
+        QuestionVO t = question("q1", "TIME");
+        assertTrue(validator.validate(List.of(t), List.of(answer("q1", "14:30"))).isEmpty());
+        assertFalse(validator.validate(List.of(t), List.of(answer("q1", "25:00"))).isEmpty());
+        assertFalse(validator.validate(List.of(t), List.of(answer("q1", "오후"))).isEmpty());
+    }
+
+    @Test
+    void radio_allowOther() {
+        QuestionVO radio = question("q1", "RADIO");
+        radio.setOptions(List.of("빨강", "파랑"));
+        radio.setAllowOther(true);
+        assertTrue(validator.validate(List.of(radio), List.of(answer("q1", "기타:초록"))).isEmpty());
+        assertFalse(validator.validate(List.of(radio), List.of(answer("q1", "기타:"))).isEmpty());
+        assertFalse(validator.validate(List.of(radio), List.of(answer("q1", "보라"))).isEmpty());
     }
 }

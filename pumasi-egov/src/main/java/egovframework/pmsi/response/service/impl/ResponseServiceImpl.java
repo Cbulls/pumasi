@@ -8,7 +8,10 @@ import egovframework.pmsi.form.service.FormService;
 import egovframework.pmsi.form.service.FormVO;
 import egovframework.pmsi.form.service.QuestionVO;
 import egovframework.pmsi.form.service.SectionVO;
+import egovframework.pmsi.form.service.impl.FormDAO;
 import egovframework.pmsi.form.service.impl.FormValidator;
+import egovframework.pmsi.notify.service.NotificationService;
+import egovframework.pmsi.notify.service.impl.NotificationServiceImpl;
 import egovframework.pmsi.response.service.AnswerVO;
 import egovframework.pmsi.response.service.ResponseService;
 import egovframework.pmsi.response.service.SubmitRequestVO;
@@ -39,8 +42,14 @@ public class ResponseServiceImpl extends EgovAbstractServiceImpl implements Resp
     @Resource(name = "formService")
     private FormService formService;
 
+    @Resource(name = "formDAO")
+    private FormDAO formDAO;
+
     @Resource(name = "creditService")
     private CreditService creditService;
+
+    @Resource(name = "notificationService")
+    private NotificationService notificationService;
 
     private final QualityJudge qualityJudge = new QualityJudge();
     private final AnswerValidator answerValidator = new AnswerValidator();
@@ -178,7 +187,43 @@ public class ResponseServiceImpl extends EgovAbstractServiceImpl implements Resp
         } else {
             applyGuardrail(formId);
         }
+        notifyOwnerOnSubmit(form, respondentId, flag.value(), responseId);
         return new SubmitResultVO(responseId, anonLabel, flag.value(), reward);
+    }
+
+    private void notifyOwnerOnSubmit(FormVO form, String respondentId, String qualityFlag, String responseId)
+            throws Exception {
+        String ownerId = form.getOwnerId();
+        String resultsPath = "/forms/" + form.getFormId() + "/results";
+        notificationService.notify(
+                ownerId,
+                NotificationServiceImpl.NEW_RESPONSE,
+                "새 응답이 도착했습니다",
+                "'" + form.getTitle() + "'에 응답이 등록되었습니다 (" + qualityFlag + ").",
+                resultsPath,
+                responseId);
+        if ("hold".equals(qualityFlag)) {
+            notificationService.notify(
+                    ownerId,
+                    NotificationServiceImpl.HOLD_REVIEW,
+                    "HOLD 응답 검토가 필요합니다",
+                    "'" + form.getTitle() + "'의 응답을 승인하거나 거절해 주세요.",
+                    resultsPath,
+                    responseId);
+        }
+        // 소유자가 응답자 설문에 답하면 이 행이 열림 → 언락 기회 알림
+        Map<String, Object> theirForm = formDAO.selectActiveFormByOwner(respondentId, ownerId);
+        if (theirForm != null) {
+            String unlockFormId = String.valueOf(theirForm.get("formId"));
+            String unlockTitle = String.valueOf(theirForm.get("title"));
+            notificationService.notify(
+                    ownerId,
+                    NotificationServiceImpl.UNLOCK_AVAILABLE,
+                    "상호 언락이 가능합니다",
+                    "상대 설문 '" + unlockTitle + "'에 응답하면 이 응답이 결과에서 열립니다.",
+                    "/forms/" + unlockFormId + "/respond",
+                    unlockFormId);
+        }
     }
 
     @Override

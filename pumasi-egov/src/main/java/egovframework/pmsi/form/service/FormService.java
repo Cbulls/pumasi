@@ -49,12 +49,21 @@ public interface FormService {
 
     List<QuestionVO> selectQuestions(String formId) throws Exception;
 
-    /** 페이지네이션 피드(정원 미달 ACTIVE만, 1:1 부스트 정렬) */
-    List<FormVO> selectActiveFeed(String viewerId, int page, int size) throws Exception;
+    /** 페이지네이션 피드(정원 미달 ACTIVE만, 1:1 부스트 정렬 + 선택 필터) */
+    List<FormVO> selectActiveFeed(String viewerId, int page, int size,
+                                  Integer maxMinutes, Long minReward, boolean reciprocalOnly)
+            throws Exception;
 
     /** 가드레일 일시정지(PAUSED) 해제 — 소유자만 */
     void resumeForm(String formId, String userId) throws Exception;
 
     /** 가드레일: 시스템이 ACTIVE 폼을 자동 일시정지 */
     void pauseForGuardrail(String formId) throws Exception;
+
+    /** 상호 언락을 위해 응답할 수 있는 상대 설문 */
+    java.util.Map<String, Object> unlockOpportunities(String viewerId, int limit) throws Exception;
+
+    /** 내가 제출한 응답 이력 */
+    java.util.List<java.util.Map<String, Object>> myResponseActivity(String userId, int limit)
+            throws Exception;
 }

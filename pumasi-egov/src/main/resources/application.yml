@@ -19,6 +19,10 @@ pmsi:
   auth:
     # true: 비밀번호 없는 데모 계정 로그인 허용(개발/시연 전용). 프로덕션은 반드시 false.
     demo-enabled: ${PMSI_DEMO_AUTH:true}
+    # true: 매직링크 요청 응답에 토큰을 포함(SMTP 없이 로컬/스테이징 검증). 프로덕션은 false + 메일 발송.
+    magic-link-echo: ${PMSI_MAGIC_LINK_ECHO:true}
+    # 신규 가입 보너스 크레딧
+    signup-bonus: ${PMSI_SIGNUP_BONUS:50}
   credit:
     # 베타: Fake 충전 API 활성화. 실PG 도입 시 false로 전환.
     fake-purchase-enabled: ${PMSI_FAKE_PURCHASE:true}

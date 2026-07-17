@@ -15,9 +15,7 @@ import java.util.List;
 /**
  * 응답 피드 API.
  *
- *  GET /pmsi/feed?page=0&size=20   게시된 남의 설문 목록 (@CurrentUser = viewer)
- *  필터: 정원 미달 ACTIVE만.
- *  정렬: 1:1 부스트(내 설문에 응답해준 사람) → 채움률 낮은 순 → 최신순
+ *  GET /pmsi/feed?page&size&maxMinutes&minReward&reciprocalOnly
  */
 @RestController
 @RequestMapping("/pmsi/feed")
@@ -30,7 +28,11 @@ public class EgovFeedController {
     public List<FormVO> feed(
             @CurrentUser String userId,
             @RequestParam(value = "page", defaultValue = "0") int page,
-            @RequestParam(value = "size", defaultValue = "20") int size) throws Exception {
-        return formService.selectActiveFeed(userId, page, size);
+            @RequestParam(value = "size", defaultValue = "20") int size,
+            @RequestParam(value = "maxMinutes", required = false) Integer maxMinutes,
+            @RequestParam(value = "minReward", required = false) Long minReward,
+            @RequestParam(value = "reciprocalOnly", defaultValue = "false") boolean reciprocalOnly)
+            throws Exception {
+        return formService.selectActiveFeed(userId, page, size, maxMinutes, minReward, reciprocalOnly);
     }
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
@@ -19,8 +19,12 @@ import {
   useUpdateSection,
 } from "@/lib/hooks";
 import QuestionEditor from "@/components/QuestionEditor";
+import ShareQr from "@/components/ShareQr";
 import StatusBadge from "@/components/StatusBadge";
+import { useCurrentUser } from "@/context/CurrentUserContext";
+import { apiFetch } from "@/lib/api";
 import { rewardPreview } from "@/lib/format";
+import { FORM_TEMPLATES, getTemplate } from "@/lib/templates";
 import type { QuestionType, QuestionVO } from "@/lib/types";
 
 const TYPE_KO: Record<QuestionType, string> = {
@@ -32,6 +36,9 @@ const TYPE_KO: Record<QuestionType, string> = {
   LINEAR_SCALE: "선형배율",
   RATING: "별점",
   DATE: "날짜",
+  TIME: "시간",
+  MULTIPLE_CHOICE_GRID: "객관식 그리드",
+  CHECKBOX_GRID: "체크박스 그리드",
   DESCRIPTION: "설명",
   IMAGE: "이미지",
   FILE: "파일",
@@ -51,34 +58,103 @@ function BuilderInner() {
   const search = useSearchParams();
   const router = useRouter();
   const [formId, setFormId] = useState(search.get("formId") ?? "");
+  const templateId = search.get("template");
 
   return formId ? (
     <Builder formId={formId} onPublished={() => router.push("/home")} />
   ) : (
-    <CreateForm onCreated={setFormId} />
+    <CreateForm
+      onCreated={setFormId}
+      initialTemplateId={templateId}
+      onTemplatePick={(id) => router.replace(`/forms/new?template=${id}`)}
+    />
   );
 }
 
-function CreateForm({ onCreated }: { onCreated: (id: string) => void }) {
+function CreateForm({
+  onCreated,
+  initialTemplateId,
+  onTemplatePick,
+}: {
+  onCreated: (id: string) => void;
+  initialTemplateId?: string | null;
+  onTemplatePick: (id: string) => void;
+}) {
   const create = useCreateForm();
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [maxResponses, setMaxResponses] = useState(5);
+  const { token } = useCurrentUser();
+  const tpl = getTemplate(initialTemplateId);
+  const [title, setTitle] = useState(tpl?.formTitle ?? "");
+  const [description, setDescription] = useState(tpl?.formDescription ?? "");
+  const [maxResponses, setMaxResponses] = useState(tpl?.maxResponses ?? 5);
   const [closesAt, setClosesAt] = useState("");
+  const [applying, setApplying] = useState(false);
+  const [applyError, setApplyError] = useState<string | null>(null);
 
   const submit = async () => {
-    const res = await create.mutateAsync({
-      title: title.trim(),
-      description,
-      maxResponses,
-      closesAt: closesAt ? new Date(closesAt).toISOString() : null,
-    });
-    onCreated(res.formId);
+    setApplying(true);
+    setApplyError(null);
+    try {
+      const res = await create.mutateAsync({
+        title: title.trim(),
+        description,
+        maxResponses,
+        closesAt: closesAt ? new Date(closesAt).toISOString() : null,
+      });
+      if (tpl) {
+        for (const q of tpl.questions) {
+          await apiFetch(`/pmsi/form/${res.formId}/questions`, {
+            method: "POST",
+            token,
+            body: {
+              type: q.type,
+              title: q.title,
+              required: q.required ?? false,
+              options: q.options,
+              scaleMin: q.scaleMin,
+              scaleMax: q.scaleMax,
+              bodyHtml: q.bodyHtml,
+            },
+          });
+        }
+      }
+      onCreated(res.formId);
+    } catch (e) {
+      setApplyError((e as Error).message);
+    } finally {
+      setApplying(false);
+    }
   };
 
   return (
     <div className="mx-auto max-w-xl space-y-4">
       <h1 className="text-xl font-extrabold">새 설문 만들기</h1>
+
+      <div className="space-y-2">
+        <p className="text-sm font-semibold text-slate-600">템플릿으로 시작</p>
+        <div className="grid gap-2 sm:grid-cols-3">
+          {FORM_TEMPLATES.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              className={`rounded-xl border p-3 text-left text-sm transition ${
+                tpl?.id === t.id
+                  ? "border-brand bg-brand-light"
+                  : "border-slate-200 hover:border-brand"
+              }`}
+              onClick={() => {
+                onTemplatePick(t.id);
+                setTitle(t.formTitle);
+                setDescription(t.formDescription);
+                setMaxResponses(t.maxResponses);
+              }}
+            >
+              <p className="font-bold">{t.title}</p>
+              <p className="mt-1 text-xs text-slate-500">{t.description}</p>
+            </button>
+          ))}
+        </div>
+      </div>
+
       <div className="card space-y-3">
         <div>
           <label className="label">제목</label>
@@ -115,13 +191,21 @@ function CreateForm({ onCreated }: { onCreated: (id: string) => void }) {
             onChange={(e) => setClosesAt(e.target.value)}
           />
         </div>
-        {create.isError && (
+        {(create.isError || applyError) && (
           <p className="rounded bg-red-50 p-2 text-sm text-red-600">
-            {(create.error as Error).message}
+            {applyError ?? (create.error as Error).message}
           </p>
         )}
-        <button className="btn-primary" onClick={submit} disabled={create.isPending || !title.trim()}>
-          {create.isPending ? "생성 중…" : "폼 만들고 질문 추가하기"}
+        <button
+          className="btn-primary"
+          onClick={submit}
+          disabled={create.isPending || applying || !title.trim()}
+        >
+          {create.isPending || applying
+            ? "생성 중…"
+            : tpl
+              ? `템플릿으로 만들기 (${tpl.title})`
+              : "폼 만들고 질문 추가하기"}
         </button>
       </div>
     </div>
@@ -145,6 +229,11 @@ function Builder({ formId, onPublished }: { formId: string; onPublished: () => v
   const [publishError, setPublishError] = useState<string | null>(null);
   const [editing, setEditing] = useState<QuestionVO | null>(null);
   const [closesLocal, setClosesLocal] = useState("");
+  const [confirmMsg, setConfirmMsg] = useState("");
+
+  useEffect(() => {
+    if (form?.confirmationMessage != null) setConfirmMsg(form.confirmationMessage);
+  }, [form?.confirmationMessage]);
 
   const estimate = useMemo(() => {
     const minutes = (questions ?? []).reduce((acc, q) => {
@@ -232,27 +321,57 @@ function Builder({ formId, onPublished }: { formId: string; onPublished: () => v
                     description: form.description,
                     maxResponses: form.maxResponses,
                     closesAt: iso,
+                    confirmationMessage: confirmMsg,
                   });
                 }}
               />
             </div>
           </div>
+          {isDraft && (
+            <div>
+              <label className="label">제출 완료 메시지 (선택)</label>
+              <input
+                className="input"
+                value={confirmMsg}
+                onChange={(e) => setConfirmMsg(e.target.value)}
+                onBlur={() =>
+                  updateForm.mutate({
+                    title: form.title,
+                    description: form.description,
+                    maxResponses: form.maxResponses,
+                    closesAt: form.closesAt,
+                    confirmationMessage: confirmMsg,
+                  })
+                }
+                placeholder="응답해 주셔서 감사합니다!"
+                maxLength={500}
+              />
+            </div>
+          )}
           {form.closesAt && (
             <p className="text-xs text-slate-500">
               마감: {new Date(form.closesAt).toLocaleString("ko-KR")}
             </p>
           )}
           {shareUrl && (
-            <div className="flex flex-wrap items-center gap-2 text-sm">
-              <span className="text-slate-500">공유 링크:</span>
-              <code className="rounded bg-slate-100 px-2 py-1 text-xs">{shareUrl}</code>
-              <button
-                type="button"
-                className="btn-ghost"
-                onClick={() => navigator.clipboard.writeText(shareUrl)}
-              >
-                복사
-              </button>
+            <div className="flex flex-wrap items-start gap-4 text-sm">
+              <div className="space-y-2">
+                <span className="text-slate-500">공유 링크</span>
+                <div className="flex flex-wrap items-center gap-2">
+                  <code className="rounded bg-slate-100 px-2 py-1 text-xs">{shareUrl}</code>
+                  <button
+                    type="button"
+                    className="btn-ghost"
+                    onClick={() => navigator.clipboard.writeText(shareUrl)}
+                  >
+                    복사
+                  </button>
+                </div>
+              </div>
+              <div>
+                <p className="mb-1 text-slate-500">QR</p>
+                <ShareQr url={shareUrl} size={128} />
+              </div>
             </div>
           )}
         </div>
@@ -380,7 +499,17 @@ function Builder({ formId, onPublished }: { formId: string; onPublished: () => v
             <b>{estimate.escrow} 크레딧</b> · 응답자 보상 <b>+{rewardPreview(estimate.cost)}</b>
           </div>
           {publishError && (
-            <p className="rounded bg-red-50 p-2 text-sm text-red-600">{publishError}</p>
+            <div className="space-y-2 rounded bg-red-50 p-2 text-sm text-red-600">
+              <p>{publishError}</p>
+              {(publishError.includes("부족") || publishError.includes("크레딧")) && (
+                <p>
+                  예치에 {estimate.escrow} 크레딧이 필요합니다.{" "}
+                  <Link href="/me" className="font-semibold underline">
+                    지갑에서 충전하기
+                  </Link>
+                </p>
+              )}
+            </div>
           )}
           <button
             className="btn-primary"

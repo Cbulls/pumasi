@@ -18,12 +18,13 @@ import ChartTypeToggle, { type ToggleOption } from "@/components/ChartTypeToggle
 
 const COLORS = ["#4f46e5", "#06b6d4", "#f59e0b", "#ef4444", "#10b981", "#8b5cf6", "#ec4899", "#0ea5e9"];
 
-type View = "pie" | "donut" | "bar" | "hbar" | "table" | "list" | "files";
+type View = "pie" | "donut" | "bar" | "hbar" | "table" | "list" | "files" | "matrix";
 type SortMode = "order" | "count";
 
 const CHOICE_TYPES = ["RADIO", "CHECKBOX", "DROPDOWN"];
 const SCALE_TYPES = ["LINEAR_SCALE", "RATING"];
 const TEXT_TYPES = ["SHORT_TEXT", "LONG_TEXT"];
+const GRID_TYPES = ["MULTIPLE_CHOICE_GRID", "CHECKBOX_GRID"];
 
 function optionsFor(type: string, chartType: string): ToggleOption<View>[] {
   if (CHOICE_TYPES.includes(type))
@@ -46,6 +47,11 @@ function optionsFor(type: string, chartType: string): ToggleOption<View>[] {
       { id: "list", label: "목록" },
       { id: "table", label: "표" },
     ];
+  if (GRID_TYPES.includes(type) || chartType === "matrix")
+    return [
+      { id: "matrix", label: "표" },
+      { id: "bar", label: "막대" },
+    ];
   if (type === "FILE" || chartType === "file_list")
     return [{ id: "files", label: "파일" }];
   return [];
@@ -61,6 +67,8 @@ function defaultView(item: ChartItem): View {
       return "list";
     case "file_list":
       return "files";
+    case "matrix":
+      return "matrix";
     default:
       return "bar";
   }
@@ -84,6 +92,10 @@ export default function ChartCard({ item }: { item: ChartItem }) {
   const isChoice = CHOICE_TYPES.includes(item.type);
   const isScale = SCALE_TYPES.includes(item.type);
   const isText = TEXT_TYPES.includes(item.type) || item.chartType === "text_freq";
+  const isMatrix = GRID_TYPES.includes(item.type) || item.chartType === "matrix";
+
+  const matrixRows = item.rowLabels ?? [];
+  const matrixCols = item.columnLabels ?? [];
 
   const data = useMemo(() => {
     const rows = Object.entries(item.counts).map(([name, value]) => ({
@@ -92,11 +104,11 @@ export default function ChartCard({ item }: { item: ChartItem }) {
       value,
       ratio: item.ratios[name] ?? 0,
     }));
-    if ((isChoice || isText) && sortMode === "count") {
+    if ((isChoice || isText || isMatrix) && sortMode === "count") {
       return [...rows].sort((a, b) => b.value - a.value || a.name.localeCompare(b.name));
     }
     return rows;
-  }, [item.counts, item.ratios, isChoice, isText, sortMode]);
+  }, [item.counts, item.ratios, isChoice, isText, isMatrix, sortMode]);
 
   return (
     <div className="card space-y-3">
@@ -193,7 +205,50 @@ export default function ChartCard({ item }: { item: ChartItem }) {
         </ResponsiveContainer>
       )}
 
-      {view === "table" && item.chartType !== "text_list" && item.chartType !== "file_list" && (
+      {view === "matrix" && (
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[240px] border-collapse text-sm">
+            <thead>
+              <tr className="border-b text-slate-500">
+                <th className="py-1.5 pr-2 text-left font-medium" />
+                {matrixCols.map((col) => (
+                  <th key={col} className="px-2 py-1.5 text-center font-medium">
+                    {col}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {matrixRows.map((row) => (
+                <tr key={row} className="border-b border-slate-100">
+                  <th className="py-1.5 pr-2 text-left font-medium text-slate-700">{row}</th>
+                  {matrixCols.map((col) => {
+                    const key = `${row}=${col}`;
+                    const n = item.counts[key] ?? 0;
+                    return (
+                      <td key={col} className="px-2 py-1.5 text-center font-medium">
+                        {n}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+              {matrixRows.length === 0 && (
+                <tr>
+                  <td colSpan={Math.max(1, matrixCols.length + 1)} className="py-3 text-center text-slate-400">
+                    응답 없음
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {view === "table" &&
+        item.chartType !== "text_list" &&
+        item.chartType !== "file_list" &&
+        item.chartType !== "matrix" && (
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b text-left text-slate-500">

@@ -13,6 +13,9 @@ const TYPE_LABELS: Record<QuestionType, string> = {
   LINEAR_SCALE: "선형 배율",
   RATING: "별점(평점)",
   DATE: "날짜",
+  TIME: "시간",
+  MULTIPLE_CHOICE_GRID: "객관식 그리드(표)",
+  CHECKBOX_GRID: "체크박스 그리드(표)",
   DESCRIPTION: "설명 문구",
   IMAGE: "이미지",
   FILE: "파일 업로드",
@@ -20,10 +23,12 @@ const TYPE_LABELS: Record<QuestionType, string> = {
 
 const isChoice = (t: QuestionType) =>
   t === "RADIO" || t === "CHECKBOX" || t === "DROPDOWN";
+const isGrid = (t: QuestionType) =>
+  t === "MULTIPLE_CHOICE_GRID" || t === "CHECKBOX_GRID";
 const isScale = (t: QuestionType) => t === "LINEAR_SCALE" || t === "RATING";
 const isContent = (t: QuestionType) => t === "DESCRIPTION" || t === "IMAGE";
-const canAttachImage = (t: QuestionType) =>
-  !isContent(t); // 응답형·FILE: 제목 아래 삽화(선택)
+const isText = (t: QuestionType) => t === "SHORT_TEXT" || t === "LONG_TEXT";
+const canAttachImage = (t: QuestionType) => !isContent(t);
 
 interface Props {
   disabled?: boolean;
@@ -47,6 +52,9 @@ export default function QuestionEditor({
   const [title, setTitle] = useState(initial?.title ?? "");
   const [required, setRequired] = useState(initial?.required ?? true);
   const [options, setOptions] = useState<string[]>(initial?.options ?? ["", ""]);
+  const [rowLabels, setRowLabels] = useState<string[]>(
+    initial?.rowLabels?.length ? [...initial.rowLabels] : [""]
+  );
   const [scaleMin, setScaleMin] = useState(initial?.scaleMin ?? 1);
   const [scaleMax, setScaleMax] = useState(initial?.scaleMax ?? 5);
   const [bodyHtml, setBodyHtml] = useState(initial?.bodyHtml ?? "");
@@ -58,6 +66,21 @@ export default function QuestionEditor({
     initial?.branchRules ?? {}
   );
   const [attentionAnswer, setAttentionAnswer] = useState(initial?.attentionAnswer ?? "");
+  const [minLength, setMinLength] = useState<string>(
+    initial?.minLength != null ? String(initial.minLength) : ""
+  );
+  const [maxLength, setMaxLength] = useState<string>(
+    initial?.maxLength != null ? String(initial.maxLength) : ""
+  );
+  const [regex, setRegex] = useState(initial?.regex ?? "");
+  const [minSelect, setMinSelect] = useState<string>(
+    initial?.minSelect != null ? String(initial.minSelect) : ""
+  );
+  const [maxSelect, setMaxSelect] = useState<string>(
+    initial?.maxSelect != null ? String(initial.maxSelect) : ""
+  );
+  const [allowOther, setAllowOther] = useState(!!initial?.allowOther);
+  const [shuffleOptions, setShuffleOptions] = useState(!!initial?.shuffleOptions);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -67,6 +90,7 @@ export default function QuestionEditor({
     setTitle(initial.title);
     setRequired(initial.required);
     setOptions(initial.options?.length ? [...initial.options] : ["", ""]);
+    setRowLabels(initial.rowLabels?.length ? [...initial.rowLabels] : [""]);
     setScaleMin(initial.scaleMin ?? 1);
     setScaleMax(initial.scaleMax ?? 5);
     setBodyHtml(initial.bodyHtml ?? "");
@@ -74,6 +98,13 @@ export default function QuestionEditor({
     setSectionId(initial.sectionId ?? sections?.[0]?.sectionId ?? "");
     setBranchRules(initial.branchRules ?? {});
     setAttentionAnswer(initial.attentionAnswer ?? "");
+    setMinLength(initial.minLength != null ? String(initial.minLength) : "");
+    setMaxLength(initial.maxLength != null ? String(initial.maxLength) : "");
+    setRegex(initial.regex ?? "");
+    setMinSelect(initial.minSelect != null ? String(initial.minSelect) : "");
+    setMaxSelect(initial.maxSelect != null ? String(initial.maxSelect) : "");
+    setAllowOther(!!initial.allowOther);
+    setShuffleOptions(!!initial.shuffleOptions);
   }, [initial, sections]);
 
   const submit = async () => {
@@ -87,6 +118,14 @@ export default function QuestionEditor({
       title: title.trim(),
       required: isContent(type) ? false : required,
       sectionId: sectionId || undefined,
+      allowOther: type === "RADIO" || type === "CHECKBOX" ? allowOther : false,
+      shuffleOptions: isChoice(type) || isGrid(type) ? shuffleOptions : false,
+      minLength: null,
+      maxLength: null,
+      regex: null,
+      minSelect: null,
+      maxSelect: null,
+      rowLabels: null,
     };
     if (isChoice(type)) {
       const opts = options.map((o) => o.trim()).filter(Boolean);
@@ -94,7 +133,42 @@ export default function QuestionEditor({
         setError("선택형은 보기가 2개 이상이어야 합니다.");
         return;
       }
+      if (opts.some((o) => o.includes("="))) {
+        setError("보기 라벨에 '='를 포함할 수 없습니다.");
+        return;
+      }
       payload.options = opts;
+    }
+    if (isGrid(type)) {
+      const rows = rowLabels.map((r) => r.trim()).filter(Boolean);
+      const cols = options.map((o) => o.trim()).filter(Boolean);
+      if (rows.length < 1) {
+        setError("그리드는 행이 1개 이상이어야 합니다.");
+        return;
+      }
+      if (cols.length < 2) {
+        setError("그리드는 열이 2개 이상이어야 합니다.");
+        return;
+      }
+      if ([...rows, ...cols].some((l) => l.includes("="))) {
+        setError("행/열 라벨에 '='를 포함할 수 없습니다.");
+        return;
+      }
+      if (new Set(rows).size !== rows.length || new Set(cols).size !== cols.length) {
+        setError("행/열 라벨이 중복됩니다.");
+        return;
+      }
+      payload.rowLabels = rows;
+      payload.options = cols;
+    }
+    if (type === "CHECKBOX" || type === "CHECKBOX_GRID") {
+      if (minSelect !== "") payload.minSelect = Number(minSelect);
+      if (maxSelect !== "") payload.maxSelect = Number(maxSelect);
+    }
+    if (isText(type)) {
+      if (minLength !== "") payload.minLength = Number(minLength);
+      if (maxLength !== "") payload.maxLength = Number(maxLength);
+      payload.regex = regex.trim() || null;
     }
     if (isScale(type)) {
       if (scaleMin >= scaleMax) {
@@ -267,6 +341,169 @@ export default function QuestionEditor({
           >
             + 보기 추가
           </button>
+          <div className="flex flex-wrap gap-4 pt-1 text-sm">
+            {(type === "RADIO" || type === "CHECKBOX") && (
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={allowOther}
+                  onChange={(e) => setAllowOther(e.target.checked)}
+                />
+                「기타」 직접 입력 허용
+              </label>
+            )}
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={shuffleOptions}
+                onChange={(e) => setShuffleOptions(e.target.checked)}
+              />
+              응답 시 보기 순서 섞기
+            </label>
+          </div>
+        </div>
+      )}
+
+      {isGrid(type) && (
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <label className="label">행 (질문 항목)</label>
+            {rowLabels.map((row, i) => (
+              <div key={i} className="flex gap-2">
+                <input
+                  className="input"
+                  value={row}
+                  onChange={(e) =>
+                    setRowLabels((prev) => prev.map((r, j) => (j === i ? e.target.value : r)))
+                  }
+                  placeholder={`행 ${i + 1}`}
+                />
+                {rowLabels.length > 1 && (
+                  <button
+                    type="button"
+                    className="btn-ghost px-2"
+                    onClick={() => setRowLabels((prev) => prev.filter((_, j) => j !== i))}
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+            ))}
+            <button
+              type="button"
+              className="text-sm font-semibold text-brand"
+              onClick={() => setRowLabels((prev) => [...prev, ""])}
+            >
+              + 행 추가
+            </button>
+          </div>
+          <div className="space-y-2">
+            <label className="label">열 (선택지)</label>
+            {options.map((opt, i) => (
+              <div key={i} className="flex gap-2">
+                <input
+                  className="input"
+                  value={opt}
+                  onChange={(e) =>
+                    setOptions((prev) => prev.map((o, j) => (j === i ? e.target.value : o)))
+                  }
+                  placeholder={`열 ${i + 1}`}
+                />
+                {options.length > 2 && (
+                  <button
+                    type="button"
+                    className="btn-ghost px-2"
+                    onClick={() => setOptions((prev) => prev.filter((_, j) => j !== i))}
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+            ))}
+            <button
+              type="button"
+              className="text-sm font-semibold text-brand"
+              onClick={() => setOptions((prev) => [...prev, ""])}
+            >
+              + 열 추가
+            </button>
+            <label className="flex items-center gap-2 pt-1 text-sm">
+              <input
+                type="checkbox"
+                checked={shuffleOptions}
+                onChange={(e) => setShuffleOptions(e.target.checked)}
+              />
+              응답 시 열 순서만 섞기 (행은 고정)
+            </label>
+          </div>
+        </div>
+      )}
+
+      {(type === "CHECKBOX" || type === "CHECKBOX_GRID") && (
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="label">
+              {type === "CHECKBOX_GRID" ? "행당 최소 선택" : "최소 선택 수"}
+            </label>
+            <input
+              type="number"
+              min={0}
+              className="input"
+              value={minSelect}
+              onChange={(e) => setMinSelect(e.target.value)}
+              placeholder="제한 없음"
+            />
+          </div>
+          <div>
+            <label className="label">
+              {type === "CHECKBOX_GRID" ? "행당 최대 선택" : "최대 선택 수"}
+            </label>
+            <input
+              type="number"
+              min={0}
+              className="input"
+              value={maxSelect}
+              onChange={(e) => setMaxSelect(e.target.value)}
+              placeholder="제한 없음"
+            />
+          </div>
+        </div>
+      )}
+
+      {isText(type) && (
+        <div className="space-y-2 rounded-lg bg-slate-50 p-3">
+          <p className="text-sm font-semibold">입력 검증 (선택)</p>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="label">최소 글자</label>
+              <input
+                type="number"
+                min={0}
+                className="input"
+                value={minLength}
+                onChange={(e) => setMinLength(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="label">최대 글자</label>
+              <input
+                type="number"
+                min={1}
+                className="input"
+                value={maxLength}
+                onChange={(e) => setMaxLength(e.target.value)}
+              />
+            </div>
+          </div>
+          <div>
+            <label className="label">정규식 (예: 이메일)</label>
+            <input
+              className="input font-mono text-xs"
+              value={regex}
+              onChange={(e) => setRegex(e.target.value)}
+              placeholder="^[^@\s]+@[^@\s]+$"
+            />
+          </div>
         </div>
       )}
 

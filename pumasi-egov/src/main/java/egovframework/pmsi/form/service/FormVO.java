@@ -36,6 +36,9 @@ public class FormVO {
     private OffsetDateTime closesAt;
     private String shareToken;
 
+    @Size(max = 500, message = "완료 메시지는 500자 이하여야 합니다.")
+    private String confirmationMessage;
+
     public String getFormId() { return formId; }
     public void setFormId(String formId) { this.formId = formId; }
     public String getOwnerId() { return ownerId; }
@@ -54,4 +57,8 @@ public class FormVO {
     public void setClosesAt(OffsetDateTime closesAt) { this.closesAt = closesAt; }
     public String getShareToken() { return shareToken; }
     public void setShareToken(String shareToken) { this.shareToken = shareToken; }
+    public String getConfirmationMessage() { return confirmationMessage; }
+    public void setConfirmationMessage(String confirmationMessage) {
+        this.confirmationMessage = confirmationMessage;
+    }
 }

@@ -97,12 +97,42 @@ public class FormDAO extends EgovAbstractMapper {
         return getSqlSession().selectList(NS + "selectFormList", ownerId);
     }
 
-    public List<FormVO> selectActiveFeed(String viewerId, int limit, int offset) {
+    public List<FormVO> selectActiveFeed(String viewerId, int limit, int offset,
+                                         Integer maxMinutes, Long minReward, boolean reciprocalOnly) {
         Map<String, Object> p = new HashMap<>();
         p.put("viewerId", viewerId);
         p.put("limit", limit);
         p.put("offset", offset);
+        p.put("maxMinutes", maxMinutes);
+        p.put("minReward", minReward);
+        p.put("reciprocalOnly", reciprocalOnly);
         return getSqlSession().selectList(NS + "selectActiveFeed", p);
+    }
+
+    public List<Map<String, Object>> selectUnlockOpportunities(String viewerId, int limit) {
+        Map<String, Object> p = new HashMap<>();
+        p.put("viewerId", viewerId);
+        p.put("limit", limit);
+        return getSqlSession().selectList(NS + "selectUnlockOpportunities", p);
+    }
+
+    public int countUnlockOpportunities(String viewerId) {
+        Integer n = getSqlSession().selectOne(NS + "countUnlockOpportunities", viewerId);
+        return n != null ? n : 0;
+    }
+
+    public List<Map<String, Object>> selectMyResponseActivity(String userId, int limit) {
+        Map<String, Object> p = new HashMap<>();
+        p.put("userId", userId);
+        p.put("limit", limit);
+        return getSqlSession().selectList(NS + "selectMyResponseActivity", p);
+    }
+
+    public Map<String, Object> selectActiveFormByOwner(String ownerId, String viewerId) {
+        Map<String, Object> p = new HashMap<>();
+        p.put("ownerId", ownerId);
+        p.put("viewerId", viewerId);
+        return getSqlSession().selectOne(NS + "selectActiveFormByOwner", p);
     }
 
     /** 가드레일: ACTIVE → PAUSED */

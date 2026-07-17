@@ -2,12 +2,13 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { useForm, useFunnel, useResults, useSections } from "@/lib/hooks";
+import { useForm, useFunnel, useResults, useSections, useUnlockOpportunities } from "@/lib/hooks";
 import { ApiError } from "@/lib/api";
 import type { ChartItem } from "@/lib/types";
 import ChartCard from "@/components/ChartCard";
 import GateBlur from "@/components/GateBlur";
 import ResponsesTable from "@/components/ResponsesTable";
+import UnlockTutorial from "@/components/UnlockTutorial";
 
 type Tab = "summary" | "individual";
 
@@ -22,6 +23,7 @@ export default function ResultsPage({ params }: { params: { id: string } }) {
   const { data: sections } = useSections(formId);
   const { data, isLoading, isError, error } = useResults(formId);
   const { data: funnel } = useFunnel(formId, !isError);
+  const unlock = useUnlockOpportunities();
 
   if (isError && error instanceof ApiError && error.status === 403) {
     return (
@@ -63,12 +65,22 @@ export default function ResultsPage({ params }: { params: { id: string } }) {
 
   return (
     <div className="space-y-5">
+      <UnlockTutorial unlockCount={unlock.data?.count} />
       <div className="flex items-center justify-between gap-2">
         <div>
           <h1 className="text-xl font-extrabold">{form?.title ?? "결과 대시보드"}</h1>
           <p className="text-sm text-slate-500">
-            요약 차트는 상호 응답으로 열린(unlocked) 성실 응답만 집계합니다.
+            요약 차트는 상호 응답으로 열린(unlocked) 성실 응답만 집계합니다. 잠긴 행은 상대 설문에
+            답하면 열립니다.
           </p>
+          {(unlock.data?.count ?? 0) > 0 && (
+            <p className="mt-1 text-sm font-semibold text-brand">
+              지금 응답하면 열 수 있는 설문 {unlock.data!.count}개 →{" "}
+              <Link href="/activity" className="underline">
+                내 활동
+              </Link>
+            </p>
+          )}
         </div>
         <Link href="/home" className="btn-ghost">
           내 설문

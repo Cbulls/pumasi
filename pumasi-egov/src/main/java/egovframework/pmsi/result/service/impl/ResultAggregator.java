@@ -25,14 +25,49 @@ public class ResultAggregator {
         return switch (q.type) {
             case "RADIO", "DROPDOWN", "CHECKBOX" -> aggregateChoice(q, valid);
             case "LINEAR_SCALE", "RATING" -> aggregateScale(q, valid);
-            case "SHORT_TEXT", "LONG_TEXT" -> aggregateText(q, valid);
+            case "SHORT_TEXT", "LONG_TEXT", "DATE", "TIME" -> aggregateText(q, valid);
             case "FILE" -> aggregateFile(q, valid);
+            case "MULTIPLE_CHOICE_GRID", "CHECKBOX_GRID" -> aggregateMatrix(q, valid);
             default -> {
                 ChartData cd = new ChartData();
                 cd.chartType = "unsupported";
                 yield cd;
             }
         };
+    }
+
+    /** 그리드: counts 키 = "행=열". 분모 = 문항 응답자 수. */
+    private ChartData aggregateMatrix(QSpec q, List<RespData> valid) {
+        ChartData cd = new ChartData();
+        cd.chartType = "matrix";
+        cd.ratioSumMayExceed100 = "CHECKBOX_GRID".equals(q.type);
+        List<String> rows = q.rowLabels != null ? q.rowLabels : List.of();
+        List<String> cols = q.optionIds != null ? q.optionIds : List.of();
+        for (String row : rows) {
+            for (String col : cols) {
+                cd.counts.put(row + "=" + col, 0);
+            }
+        }
+        int respondents = 0;
+        for (RespData r : valid) {
+            List<String> ans = r.answers.get(q.id);
+            if (ans == null || ans.isEmpty()) continue;
+            boolean answered = false;
+            for (String a : ans) {
+                if (a != null && cd.counts.containsKey(a)) {
+                    cd.counts.merge(a, 1, Integer::sum);
+                    answered = true;
+                }
+            }
+            if (answered) respondents++;
+        }
+        cd.respondentCount = respondents;
+        if (respondents > 0) {
+            for (var e : cd.counts.entrySet()) {
+                cd.ratios.put(e.getKey(), 100.0 * e.getValue() / respondents);
+            }
+        }
+        return cd;
     }
 
     private ChartData aggregateChoice(QSpec q, List<RespData> valid) {
@@ -50,6 +85,9 @@ public class ResultAggregator {
             boolean answered = false;
             for (String a : ans) {
                 if (q.optionIds.contains(a)) {
+                    cd.counts.merge(a, 1, Integer::sum);
+                    answered = true;
+                } else if (a != null && a.startsWith("기타:")) {
                     cd.counts.merge(a, 1, Integer::sum);
                     answered = true;
                 }

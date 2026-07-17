@@ -6,6 +6,7 @@ import org.egovframe.rte.psl.dataaccess.EgovAbstractMapper;
 import org.springframework.stereotype.Repository;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -74,6 +75,13 @@ public class CreditDAO extends EgovAbstractMapper {
         p.put("reason", reason);
         p.put("refId", refId);
         getSqlSession().insert(NS + "insertLedger", p);
+    }
+
+    public List<Map<String, Object>> selectLedger(String userId, int limit) {
+        Map<String, Object> p = new HashMap<>();
+        p.put("userId", userId);
+        p.put("limit", limit);
+        return getSqlSession().selectList(NS + "selectLedger", p);
     }
 
     private Map<String, Object> params(String userId, long amount) {

@@ -12,7 +12,11 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import javax.annotation.Resource;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+
+import org.springframework.web.bind.annotation.RequestParam;
 
 /**
  * 크레딧 API.
@@ -49,5 +53,15 @@ public class EgovCreditController {
         long amount = body.get("amount") instanceof Number n ? n.longValue() : 0;
         String refId = body.get("refId") instanceof String s ? s : null;
         return creditService.purchase(userId, amount, refId);
+    }
+
+    @GetMapping("/ledger")
+    public Map<String, Object> ledger(
+            @CurrentUser String userId,
+            @RequestParam(value = "limit", defaultValue = "50") int limit) throws Exception {
+        List<Map<String, Object>> items = creditService.ledger(userId, limit);
+        Map<String, Object> out = new HashMap<>();
+        out.put("items", items);
+        return out;
     }
 }

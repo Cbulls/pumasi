@@ -30,18 +30,155 @@ export function useMyForms() {
 
 export const FEED_PAGE_SIZE = 20;
 
-/** 페이지네이션 피드: "더 보기"로 다음 페이지 로드 */
-export function useFeed() {
+export type FeedFilters = {
+  maxMinutes?: number | null;
+  minReward?: number | null;
+  reciprocalOnly?: boolean;
+};
+
+/** 페이지네이션 피드: "더 보기"로 다음 페이지 로드 + 실용 필터 */
+export function useFeed(filters: FeedFilters = {}) {
   const { token } = useCurrentUser();
+  const maxMinutes = filters.maxMinutes ?? undefined;
+  const minReward = filters.minReward ?? undefined;
+  const reciprocalOnly = !!filters.reciprocalOnly;
   return useInfiniteQuery({
-    queryKey: ["feed", token],
-    queryFn: ({ pageParam }) =>
-      apiFetch<FormVO[]>(`/pmsi/feed?page=${pageParam}&size=${FEED_PAGE_SIZE}`, { token }),
+    queryKey: ["feed", token, maxMinutes ?? null, minReward ?? null, reciprocalOnly],
+    queryFn: ({ pageParam }) => {
+      const q = new URLSearchParams({
+        page: String(pageParam),
+        size: String(FEED_PAGE_SIZE),
+      });
+      if (maxMinutes != null) q.set("maxMinutes", String(maxMinutes));
+      if (minReward != null) q.set("minReward", String(minReward));
+      if (reciprocalOnly) q.set("reciprocalOnly", "true");
+      return apiFetch<FormVO[]>(`/pmsi/feed?${q}`, { token });
+    },
     initialPageParam: 0,
     getNextPageParam: (lastPage, pages) =>
       lastPage.length < FEED_PAGE_SIZE ? undefined : pages.length,
     enabled: !!token,
   });
+}
+
+export function useUnlockOpportunities() {
+  const { userId, token } = useCurrentUser();
+  return useQuery({
+    queryKey: ["unlockOpportunities", userId],
+    queryFn: () =>
+      apiFetch<{ count: number; items: Array<{ formId: string; title: string; costCredits: number }> }>(
+        `/pmsi/me/unlock-opportunities`,
+        { token }
+      ),
+    enabled: !!token,
+  });
+}
+
+export function useMyActivity() {
+  const { userId, token } = useCurrentUser();
+  return useQuery({
+    queryKey: ["myActivity", userId],
+    queryFn: () =>
+      apiFetch<{
+        items: Array<{
+          responseId: string;
+          formId: string;
+          formTitle: string;
+          qualityFlag: string;
+          anonLabel: string;
+          submittedAt: string;
+          costCredits: number;
+        }>;
+      }>(`/pmsi/me/responses`, { token }),
+    enabled: !!token,
+  });
+}
+
+export function useNotifications() {
+  const { userId, token } = useCurrentUser();
+  return useQuery({
+    queryKey: ["notifications", userId],
+    queryFn: () =>
+      apiFetch<{
+        unreadCount: number;
+        items: Array<{
+          id: string;
+          type: string;
+          title: string;
+          body?: string;
+          linkUrl?: string;
+          readAt?: string | null;
+          createdAt: string;
+        }>;
+      }>(`/pmsi/notifications?limit=30`, { token }),
+    enabled: !!token,
+    refetchInterval: 30_000,
+  });
+}
+
+export function useMarkNotificationRead() {
+  const { userId, token } = useCurrentUser();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      apiFetch<void>(`/pmsi/notifications/${id}/read`, { method: "POST", token }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["notifications", userId] }),
+  });
+}
+
+export function useMarkAllNotificationsRead() {
+  const { userId, token } = useCurrentUser();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiFetch<void>(`/pmsi/notifications/read-all`, { method: "POST", token }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["notifications", userId] }),
+  });
+}
+
+export function useCreditLedger() {
+  const { userId, token } = useCurrentUser();
+  return useQuery({
+    queryKey: ["creditLedger", userId],
+    queryFn: () =>
+      apiFetch<{
+        items: Array<{
+          id: number;
+          delta: number;
+          reason: string;
+          refId: string;
+          createdAt: string;
+        }>;
+      }>(`/pmsi/credit/ledger?limit=50`, { token }),
+    enabled: !!token,
+  });
+}
+
+export function useExportJob(formId: string) {
+  const { token } = useCurrentUser();
+  const qc = useQueryClient();
+  const create = useMutation({
+    mutationFn: () =>
+      apiFetch<{ jobId: string }>(`/pmsi/form/${formId}/results/export-jobs`, {
+        method: "POST",
+        token,
+      }),
+  });
+  const status = useQuery({
+    queryKey: ["exportJob", formId, create.data?.jobId],
+    queryFn: () =>
+      apiFetch<{
+        jobId: string;
+        status: string;
+        fileName?: string;
+        error?: string;
+      }>(`/pmsi/form/${formId}/results/export-jobs/${create.data!.jobId}`, { token }),
+    enabled: !!token && !!create.data?.jobId,
+    refetchInterval: (q) => {
+      const s = q.state.data?.status;
+      return s === "DONE" || s === "FAILED" ? false : 1500;
+    },
+  });
+  return { create, status, token, qc };
 }
 
 export function useForm(formId: string) {
@@ -349,6 +486,9 @@ export function useSubmitResponse(formId: string) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["credit", userId] });
       qc.invalidateQueries({ queryKey: ["feed"] });
+      qc.invalidateQueries({ queryKey: ["notifications", userId] });
+      qc.invalidateQueries({ queryKey: ["unlockOpportunities", userId] });
+      qc.invalidateQueries({ queryKey: ["myActivity", userId] });
     },
   });
 }
@@ -417,4 +557,8 @@ export async function uploadFormFile(
 
 export function serverCsvUrl(formId: string) {
   return `${API_BASE}/pmsi/form/${formId}/results/export.csv`;
+}
+
+export function exportJobDownloadUrl(formId: string, jobId: string) {
+  return `${API_BASE}/pmsi/form/${formId}/results/export-jobs/${jobId}/download`;
 }

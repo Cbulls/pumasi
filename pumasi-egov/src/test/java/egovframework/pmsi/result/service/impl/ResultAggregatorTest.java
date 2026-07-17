@@ -81,6 +81,32 @@ class ResultAggregatorTest {
         assertEquals("/pmsi/form/x/files/a.png", cd.textResponses.get(0));
     }
 
+    @Test
+    void matrixCountsRowColKeys() {
+        QSpec q = new QSpec();
+        q.id = "qg";
+        q.type = "MULTIPLE_CHOICE_GRID";
+        q.rowLabels = List.of("맛", "양");
+        q.optionIds = List.of("좋음", "보통");
+
+        Map<String, List<String>> a1 = new HashMap<>();
+        a1.put("qg", List.of("맛=좋음", "양=보통"));
+        Map<String, List<String>> a2 = new HashMap<>();
+        a2.put("qg", List.of("맛=좋음", "양=좋음"));
+
+        ChartData cd = agg.aggregate(q, List.of(
+                new RespData("pass", a1),
+                new RespData("pass", a2)));
+
+        assertEquals("matrix", cd.chartType);
+        assertEquals(2, cd.counts.get("맛=좋음"));
+        assertEquals(1, cd.counts.get("양=보통"));
+        assertEquals(1, cd.counts.get("양=좋음"));
+        assertEquals(0, cd.counts.get("맛=보통"));
+        assertEquals(2, cd.respondentCount);
+        assertFalse(cd.ratioSumMayExceed100);
+    }
+
     private static RespData pass(String qid, String value) {
         Map<String, List<String>> answers = new HashMap<>();
         answers.put(qid, List.of(value));

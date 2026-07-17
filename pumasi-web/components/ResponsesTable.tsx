@@ -2,7 +2,13 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { serverCsvUrl, useResponsesTable, useReviewResponse } from "@/lib/hooks";
+import {
+  exportJobDownloadUrl,
+  serverCsvUrl,
+  useExportJob,
+  useResponsesTable,
+  useReviewResponse,
+} from "@/lib/hooks";
 import { useCurrentUser } from "@/context/CurrentUserContext";
 
 const FLAG_CLS: Record<string, string> = {
@@ -32,6 +38,7 @@ export default function ResponsesTable({ formId, active }: { formId: string; act
   const { token } = useCurrentUser();
   const { data, isLoading, isError, error } = useResponsesTable(formId, active);
   const review = useReviewResponse(formId);
+  const exportJob = useExportJob(formId);
   const [downloading, setDownloading] = useState(false);
 
   const downloadServerCsv = async () => {
@@ -84,14 +91,63 @@ export default function ResponsesTable({ formId, active }: { formId: string; act
             않습니다.
           </p>
         </div>
-        <button
-          type="button"
-          className="btn-primary shrink-0"
-          disabled={downloading}
-          onClick={downloadServerCsv}
-        >
-          {downloading ? "내려받는 중…" : "엑셀용 CSV 다운로드"}
-        </button>
+        <div className="flex shrink-0 flex-col gap-2 sm:items-end">
+          <button
+            type="button"
+            className="btn-primary"
+            disabled={downloading}
+            onClick={downloadServerCsv}
+          >
+            {downloading ? "내려받는 중…" : "엑셀용 CSV 다운로드"}
+          </button>
+          <button
+            type="button"
+            className="btn-ghost text-xs"
+            disabled={exportJob.create.isPending}
+            onClick={() => exportJob.create.mutate()}
+          >
+            {exportJob.create.isPending ? "작업 생성 중…" : "대용량 비동기보내기"}
+          </button>
+          {exportJob.create.data?.jobId && (
+            <p className="text-xs text-slate-500">
+              상태: {exportJob.status.data?.status ?? "QUEUED"}
+              {exportJob.status.data?.status === "DONE" && (
+                <>
+                  {" · "}
+                  <a
+                    className="font-semibold text-brand hover:underline"
+                    href={exportJobDownloadUrl(formId, exportJob.create.data.jobId)}
+                    onClick={async (e) => {
+                      e.preventDefault();
+                      const res = await fetch(
+                        exportJobDownloadUrl(formId, exportJob.create.data!.jobId),
+                        { headers: token ? { Authorization: `Bearer ${token}` } : {} }
+                      );
+                      if (!res.ok) {
+                        alert("다운로드 실패");
+                        return;
+                      }
+                      const blob = await res.blob();
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement("a");
+                      a.href = url;
+                      a.download =
+                        exportJob.status.data?.fileName ||
+                        `pumasi-async-${formId.slice(0, 8)}.csv`;
+                      a.click();
+                      URL.revokeObjectURL(url);
+                    }}
+                  >
+                    준비됨 · 다운로드
+                  </a>
+                </>
+              )}
+              {exportJob.status.data?.status === "FAILED" && (
+                <span className="text-red-600"> · 실패</span>
+              )}
+            </p>
+          )}
+        </div>
       </div>
 
       <div className="overflow-auto rounded-xl border border-slate-200">
@@ -129,11 +185,14 @@ export default function ResponsesTable({ formId, active }: { formId: string; act
                             href={`/forms/${row.unlockFormId}/respond`}
                             className="block text-xs font-semibold text-brand hover:underline"
                           >
-                            상대 설문 응답하기
+                            상대 설문에 답하면 이 행이 열립니다
                             {row.unlockFormTitle ? ` · ${row.unlockFormTitle}` : ""}
                           </Link>
                         ) : (
-                          <p className="text-xs text-slate-500">{row.unlockHint}</p>
+                          <p className="text-xs text-slate-500">
+                            {row.unlockHint ||
+                              "상대에게 ACTIVE 설문이 있으면 응답 후 이 행이 열립니다."}
+                          </p>
                         )}
                       </div>
                     ) : (

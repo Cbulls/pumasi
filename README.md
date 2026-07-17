@@ -26,7 +26,7 @@
 5. [기능 카탈로그](#5-기능-카탈로그)
 6. [아키텍처와 데이터 흐름](#6-아키텍처와-데이터-흐름)
 7. [API와 화면 맵](#7-api와-화면-맵)
-8. [데이터베이스 (Flyway V1–V12)](#8-데이터베이스-flyway-v1v12)
+8. [데이터베이스 (Flyway V1–V15)](#8-데이터베이스-flyway-v1v15)
 9. [설계 결정 요약](#9-설계-결정-요약)
 10. [개발 과정에서 겪은 문제와 해결](#10-개발-과정에서-겪은-문제와-해결)
 11. [로컬에서 실행하기](#11-로컬에서-실행하기)
@@ -189,14 +189,34 @@ egovframework.pmsi
 
 - 폼 생성·수정, 최대 응답 수, 마감 시각(`closes_at`)
 - 섹션, 질문 순서 변경
-- 질문 유형(응답형 8종): `SHORT_TEXT`, `LONG_TEXT`, `RADIO`, `CHECKBOX`, `DROPDOWN`, `LINEAR_SCALE`, `RATING`, `DATE` + 콘텐츠 블록 `DESCRIPTION`, `IMAGE` + 첨부 `FILE`
+- 질문 유형(응답형 11종): `SHORT_TEXT`, `LONG_TEXT`, `RADIO`, `CHECKBOX`, `DROPDOWN`, `LINEAR_SCALE`, `RATING`, `DATE`, `TIME`, `MULTIPLE_CHOICE_GRID`, `CHECKBOX_GRID` + 콘텐츠 블록 `DESCRIPTION`, `IMAGE` + 첨부 `FILE`
+- **객관식/체크박스 그리드(표형)** — 행=`row_labels`, 열=`options`. 답은 `values`에 `"행=열"` 문자열. 상세는 [§5.1.1](#511-객관식체크박스-그리드)
+- RADIO/CHECKBOX: `allowOther`(기타 직접입력), 선택형·그리드: `shuffleOptions`(응답 시 보기/열 순서만 섞음)
 - RADIO **주의 문항**(`attentionAnswer`) — 지정 답과 다르면 제출 즉시 reject
 - RADIO 조건부 분기(`branch_rules` JSON) — 뒤 섹션으로만
-- 게시 시 비용 자동 산정(대략 문항당 1분, 장문 2분, 최소 1크레딧) 후 escrow 예치
+- 제출 후 안내: `confirmation_message`(폼 단위)
+- 게시 시 비용 자동 산정(대략 문항당 1분, 장문 2분, 최소 1크레딧 — **그리드도 1블록=1분**) 후 escrow 예치
 - 공유 토큰(`share_token`) — **소유자에게만** API로 노출
 
 화면: [`pumasi-web/app/forms/new/page.tsx`](pumasi-web/app/forms/new/page.tsx),  
 편집기: [`QuestionEditor.tsx`](pumasi-web/components/QuestionEditor.tsx)
+
+#### 5.1.1 객관식/체크박스 그리드
+
+구글폼식 표형 문항. 스키마는 Flyway **V15** (`form_question.row_labels` JSONB). 열 라벨은 기존 `form_question_option`을 재사용합니다.
+
+| 유형 | 응답 UI | `values` 규칙 |
+|------|---------|----------------|
+| `MULTIPLE_CHOICE_GRID` | 행마다 radio | 필수면 **모든 행**에 정확히 1개. 같은 행 중복 금지 |
+| `CHECKBOX_GRID` | 행×열 checkbox | `(행,열)` 유일. 선택적 `minSelect`/`maxSelect`는 **행당** 선택 수 |
+
+- 구분자 `=` — 행/열 라벨에 `=` 포함 시 저장 거부(`FormValidator`)
+- `shuffleOptions`는 **열만** 셔플(행 순서는 고정 — 행 의미 보존)
+- 집계: `chartType = "matrix"`, counts 키 = `"행=열"`. 결과 API에 `rowLabels`·`columnLabels` 포함
+- CSV/개별응답: 기존 values join — 예) `맛=좋음; 양=보통`
+
+검증: [`FormValidator`](pumasi-egov/src/main/java/egovframework/pmsi/form/service/impl/FormValidator.java) · [`AnswerValidator`](pumasi-egov/src/main/java/egovframework/pmsi/response/service/impl/AnswerValidator.java) · [`ResultAggregator`](pumasi-egov/src/main/java/egovframework/pmsi/result/service/impl/ResultAggregator.java)  
+UI: [`AnswerInput.tsx`](pumasi-web/components/AnswerInput.tsx) · [`ChartCard.tsx`](pumasi-web/components/ChartCard.tsx)
 
 ### 5.2 문항 이미지 (media 파이프라인)
 
@@ -228,7 +248,7 @@ IMAGE 유형과 일반 문항의 “문항 이미지(선택)”는 URL 텍스트
 
 - 소유자만 결과 API
 - KPI: 전체/pass/hold/reject, unlocked 수, 언락률 등
-- 차트: choice / scale(빈 bin 포함) / text 빈도 / FILE 목록; 체크박스는 합이 100%를 넘을 수 있음 안내
+- 차트: choice / scale(빈 bin 포함) / text·DATE·TIME 빈도 / FILE 목록 / **grid matrix(행×열 카운트 표)**; 체크박스·체크 그리드는 합이 100%를 넘을 수 있음 안내
 - 개별 행: 잠긴 응답은 블러·CTA(상대 ACTIVE 설문으로 이동)
 - CSV: UTF-8 BOM, 잠긴 행 답변 칸 비움, 유일 헤더, 한글 `filename*`
 - 대용량은 **비동기 export**: `export_job` 생성 → @Async 워커가 CSV를 스토리지에 저장 → 상태 조회·다운로드
@@ -344,7 +364,7 @@ flowchart LR
 
 ---
 
-## 8. 데이터베이스 (Flyway V1–V12)
+## 8. 데이터베이스 (Flyway V1–V15)
 
 경로: [`pumasi-egov/src/main/resources/db/migration/`](pumasi-egov/src/main/resources/db/migration/)
 
@@ -362,8 +382,11 @@ flowchart LR
 | **V10** | 무결성 강화: FK, CHECK, SYSTEM 유저, 인덱스, ledger GENESIS 백필 |
 | **V11** | image_url 에셋 규약 주석 (`?v=thumb\|display\|orig`) |
 | **V12** | attention_answer(주의 문항), form PAUSED(가드레일), survey_event(퍼널), export_job(비동기 export), 응답자 인덱스 |
+| **V13** | 매직링크·이메일, 인앱 알림(`user_notification`) |
+| **V14** | confirmation_message, allow_other, shuffle_options |
+| **V15** | `form_question.row_labels` — 객관식/체크박스 그리드 행 라벨 |
 
-**실제 스키마는 V12까지**입니다.
+**실제 스키마는 V15까지**입니다.
 
 ---
 
@@ -615,9 +638,9 @@ gradle test
 |--------|-----------|
 | `SettlementCalcTest` | 80/20·최소 보상 |
 | `QualityJudgeTest` | pass/hold/reject·주의 문항 |
-| `AnswerValidatorTest` | 유형별 답 검증 (DROPDOWN/RATING/DATE 포함) |
-| `FormValidatorTest` | 문항 정의 검증·attentionAnswer |
-| `ResultAggregatorTest` | scale/text/checkbox/file 집계 |
+| `AnswerValidatorTest` | 유형별 답 검증 (DROPDOWN/RATING/DATE/TIME·그리드 `행=열`·행당 min/max 포함) |
+| `FormValidatorTest` | 문항 정의 검증·attentionAnswer·그리드 행/열/`=` 금지 |
+| `ResultAggregatorTest` | scale/text/checkbox/file/**matrix** 집계 |
 | `ImageAssetServiceTest` | WebP 파생본 3종 생성 (StorageClient 경유) |
 | `CreditSettlementIdempotencyIT` | 원장 멱등(환경 의존 가능) |
 
@@ -654,6 +677,7 @@ npm run build
 | 가드레일 | **구현** — reject 급증 시 자동 PAUSED + 소유자 재개 |
 | 하이브리드 피드 랭킹 전체 | 부분 — 상호 부스트 + 채움률 정렬 + 페이지네이션. 점수식 전체는 후속 |
 | 비동기 대용량 export | **구현** — `export_job` + @Async 워커 + 스토리지 저장 CSV. POI xlsx는 후속 |
+| 객관식/체크박스 그리드 | **구현** — V15 `row_labels` + matrix 집계/표 UI. 퀴즈 채점·무로그인 응답은 후속 |
 | SecurityHeadersFilter multipart 예외 | **수정** — `/files`·`/media` POST 모두 256KB 가드 제외(413 해소) |
 
 ---
@@ -698,4 +722,4 @@ npm run build
 
 ---
 
-*문서 버전: 저장소 루트 README — 구현 기준 Flyway V12(주의 문항·가드레일·퍼널 이벤트·비동기 export), StorageClient(local/S3), 질문 유형 8종, 상호 언락 결과/차트/CSV 반영.*
+*문서 버전: 저장소 루트 README — 구현 기준 Flyway V15(그리드 row_labels·Forms 패리티·UX), StorageClient(local/S3), 질문 유형 11종(+콘텐츠/FILE), matrix 집계, 상호 언락 결과/차트/CSV 반영.*

@@ -80,6 +80,13 @@ public class ResultServiceImpl extends EgovAbstractServiceImpl implements Result
             item.put("median", cd.median);
             item.put("textResponses", cd.textResponses);
             item.put("ratioSumMayExceed100", cd.ratioSumMayExceed100);
+            if (q.rowLabels != null && !q.rowLabels.isEmpty()) {
+                item.put("rowLabels", q.rowLabels);
+            }
+            if (("MULTIPLE_CHOICE_GRID".equals(q.type) || "CHECKBOX_GRID".equals(q.type))
+                    && q.optionIds != null) {
+                item.put("columnLabels", q.optionIds);
+            }
             items.add(item);
         }
 
@@ -259,6 +266,7 @@ public class ResultServiceImpl extends EgovAbstractServiceImpl implements Result
         q.id = qvo.getQuestionId();
         q.type = qvo.getType();
         if (qvo.getOptions() != null) q.optionIds = qvo.getOptions();
+        if (qvo.getRowLabels() != null) q.rowLabels = qvo.getRowLabels();
         q.scaleMin = qvo.getScaleMin();
         q.scaleMax = qvo.getScaleMax();
         return q;

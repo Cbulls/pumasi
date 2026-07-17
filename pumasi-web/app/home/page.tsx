@@ -1,11 +1,39 @@
 "use client";
 
 import Link from "next/link";
-import { useCloseForm, useMyForms, useResumeForm } from "@/lib/hooks";
+import { useState } from "react";
+import { useCloseForm, useMyForms, useResumeForm, useUnlockOpportunities } from "@/lib/hooks";
 import { useCurrentUser } from "@/context/CurrentUserContext";
+import ShareQr from "@/components/ShareQr";
 import StatusBadge from "@/components/StatusBadge";
 import { rewardPreview } from "@/lib/format";
 import type { FormVO } from "@/lib/types";
+
+function ShareLinkButton({ token }: { token: string }) {
+  const [open, setOpen] = useState(false);
+  const url =
+    typeof window !== "undefined" ? `${window.location.origin}/s/${token}` : `/s/${token}`;
+  return (
+    <div className="relative">
+      <button type="button" className="btn-ghost" onClick={() => setOpen((v) => !v)}>
+        공유
+      </button>
+      {open && (
+        <div className="absolute right-0 z-20 mt-2 w-56 rounded-xl border border-slate-200 bg-white p-3 shadow-lg">
+          <p className="mb-2 break-all text-xs text-slate-500">{url}</p>
+          <button
+            type="button"
+            className="btn-ghost mb-2 w-full text-xs"
+            onClick={() => void navigator.clipboard.writeText(url)}
+          >
+            링크 복사
+          </button>
+          <ShareQr url={url} size={140} />
+        </div>
+      )}
+    </div>
+  );
+}
 
 function ResumeFormButton({ form }: { form: FormVO }) {
   const resume = useResumeForm(form.formId);
@@ -40,6 +68,8 @@ function CloseFormButton({ form }: { form: FormVO }) {
 export default function DashboardPage() {
   const { userId } = useCurrentUser();
   const { data: forms, isLoading, isError, error } = useMyForms();
+  const unlock = useUnlockOpportunities();
+  const unlockCount = unlock.data?.count ?? 0;
 
   return (
     <div className="space-y-6">
@@ -50,10 +80,18 @@ export default function DashboardPage() {
             남의 설문에 응답해 크레딧을 벌고, 그 크레딧으로 내 설문의 응답자를 모으세요.
           </p>
           <p className="mt-1 text-xs text-white/60">현재 사용자: {userId ?? "로그인 중…"}</p>
+          {unlockCount > 0 && (
+            <p className="mt-2 text-sm font-semibold text-sky-100">
+              나를 언락해 줄 설문 {unlockCount}개 — 답하면 잠긴 결과가 열립니다.
+            </p>
+          )}
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Link href="/forms/new" className="btn bg-white text-brand hover:bg-white/90">
             + 새 설문 만들기
+          </Link>
+          <Link href="/activity" className="btn border border-white/40 text-white hover:bg-white/10">
+            {unlockCount > 0 ? `언락하러 가기 (${unlockCount})` : "내 활동"}
           </Link>
           <Link href="/feed" className="btn border border-white/40 text-white hover:bg-white/10">
             응답 피드
@@ -114,17 +152,7 @@ export default function DashboardPage() {
                     결과 보기
                   </Link>
                   {f.status === "ACTIVE" && f.shareToken && (
-                    <button
-                      type="button"
-                      className="btn-ghost"
-                      onClick={() =>
-                        navigator.clipboard.writeText(
-                          `${window.location.origin}/s/${f.shareToken}`
-                        )
-                      }
-                    >
-                      공유 링크
-                    </button>
+                    <ShareLinkButton token={f.shareToken} />
                   )}
                   {f.status === "ACTIVE" && <CloseFormButton form={f} />}
                   {f.status === "PAUSED" && <ResumeFormButton form={f} />}
