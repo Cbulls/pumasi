@@ -20,6 +20,9 @@ public interface ResultService {
      */
     Map<String, Object> responseTable(String formId, String userId) throws Exception;
 
-    /** 개별 응답 CSV(UTF-8 BOM). 소유자만. */
-    String exportCsv(String formId, String userId) throws Exception;
+    /**
+     * 개별 응답 CSV(UTF-8 BOM). 소유자만.
+     * 잠긴 행은 열림=N + 답 칸 공란. 질문 제목 중복 시 헤더 유일화.
+     */
+    CsvExport exportCsv(String formId, String userId) throws Exception;
 }

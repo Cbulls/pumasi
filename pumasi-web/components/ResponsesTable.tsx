@@ -1,9 +1,9 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 import { serverCsvUrl, useResponsesTable } from "@/lib/hooks";
 import { useCurrentUser } from "@/context/CurrentUserContext";
-import type { ResponsesTable as ResponsesTableData } from "@/lib/types";
 
 const FLAG_CLS: Record<string, string> = {
   pass: "bg-emerald-100 text-emerald-700",
@@ -11,58 +11,52 @@ const FLAG_CLS: Record<string, string> = {
   reject: "bg-red-100 text-red-700",
 };
 
-function buildCsv(table: ResponsesTableData): string {
-  const esc = (s: unknown) => `"${String(s ?? "").replace(/"/g, '""')}"`;
-  const header = [
-    "익명ID",
-    "품질",
-    "제출시각",
-    "열림",
-    ...table.questions.map((q) => q.title),
-  ];
-  const lines = [header.map(esc).join(",")];
-  for (const row of table.rows) {
-    const cells = [
-      row.anonLabel,
-      row.qualityFlag,
-      row.submittedAt,
-      row.unlocked ? "Y" : "N",
-      ...table.questions.map((q) => row.answers[q.questionId] ?? ""),
-    ];
-    lines.push(cells.map(esc).join(","));
+/** Content-Disposition에서 filename* / filename 추출 */
+function filenameFromDisposition(header: string | null, fallback: string): string {
+  if (!header) return fallback;
+  const star = /filename\*\s*=\s*UTF-8''([^;]+)/i.exec(header);
+  if (star?.[1]) {
+    try {
+      return decodeURIComponent(star[1].trim().replace(/^["']|["']$/g, ""));
+    } catch {
+      /* fall through */
+    }
   }
-  return lines.join("\n");
-}
-
-function downloadCsv(table: ResponsesTableData) {
-  const blob = new Blob(["\uFEFF" + buildCsv(table)], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = "responses.csv";
-  a.click();
-  URL.revokeObjectURL(url);
+  const plain = /filename\s*=\s*"([^"]+)"/i.exec(header)
+    ?? /filename\s*=\s*([^;]+)/i.exec(header);
+  if (plain?.[1]) return plain[1].trim();
+  return fallback;
 }
 
 export default function ResponsesTable({ formId, active }: { formId: string; active: boolean }) {
   const { token } = useCurrentUser();
   const { data, isLoading, isError, error } = useResponsesTable(formId, active);
+  const [downloading, setDownloading] = useState(false);
 
   const downloadServerCsv = async () => {
-    const res = await fetch(serverCsvUrl(formId), {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    });
-    if (!res.ok) {
-      alert("CSV 다운로드에 실패했습니다.");
-      return;
+    setDownloading(true);
+    try {
+      const res = await fetch(serverCsvUrl(formId), {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) {
+        alert("CSV 다운로드에 실패했습니다.");
+        return;
+      }
+      const blob = await res.blob();
+      const name = filenameFromDisposition(
+        res.headers.get("Content-Disposition"),
+        `pumasi-export-${formId.slice(0, 8)}.csv`
+      );
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = name;
+      a.click();
+      URL.revokeObjectURL(url);
+    } finally {
+      setDownloading(false);
     }
-    const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "responses.csv";
-    a.click();
-    URL.revokeObjectURL(url);
   };
 
   if (isLoading) return <p className="text-slate-500">개별 응답 불러오는 중…</p>;
@@ -84,15 +78,19 @@ export default function ResponsesTable({ formId, active }: { formId: string; act
           {data.reciprocityRule && (
             <p className="mt-1 text-xs text-slate-400">{data.reciprocityRule}</p>
           )}
+          <p className="mt-1 text-xs text-slate-400">
+            CSV에서 잠긴 응답은 열림=N이고 답 칸은 비웁니다. UTF-8 BOM이라 엑셀에서 한글이 깨지지
+            않습니다.
+          </p>
         </div>
-        <div className="flex gap-2">
-          <button className="btn-ghost" onClick={() => downloadCsv(data)}>
-            CSV (브라우저)
-          </button>
-          <button className="btn-primary" onClick={downloadServerCsv}>
-            CSV (서버)
-          </button>
-        </div>
+        <button
+          type="button"
+          className="btn-primary shrink-0"
+          disabled={downloading}
+          onClick={downloadServerCsv}
+        >
+          {downloading ? "내려받는 중…" : "엑셀용 CSV 다운로드"}
+        </button>
       </div>
 
       <div className="overflow-auto rounded-xl border border-slate-200">

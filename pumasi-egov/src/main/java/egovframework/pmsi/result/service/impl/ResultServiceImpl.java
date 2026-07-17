@@ -5,6 +5,7 @@ import egovframework.pmsi.form.service.FormService;
 import egovframework.pmsi.form.service.FormVO;
 import egovframework.pmsi.form.service.QuestionVO;
 import egovframework.pmsi.form.service.impl.FormValidator;
+import egovframework.pmsi.result.service.CsvExport;
 import egovframework.pmsi.result.service.ResultService;
 import org.egovframe.rte.fdl.cmmn.EgovAbstractServiceImpl;
 
@@ -142,12 +143,15 @@ public class ResultServiceImpl extends EgovAbstractServiceImpl implements Result
 
     @Override
     @Transactional(readOnly = true)
-    public String exportCsv(String formId, String userId) throws Exception {
+    public CsvExport exportCsv(String formId, String userId) throws Exception {
+        FormVO form = requireOwner(formId, userId);
         Map<String, Object> table = responseTable(formId, userId);
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> qHeaders = (List<Map<String, Object>>) table.get("questions");
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> rows = (List<Map<String, Object>>) table.get("rows");
+
+        List<String> questionTitles = uniqueTitles(qHeaders);
 
         StringBuilder sb = new StringBuilder();
         sb.append('\uFEFF');
@@ -156,25 +160,51 @@ public class ResultServiceImpl extends EgovAbstractServiceImpl implements Result
         headers.add("품질");
         headers.add("제출시각");
         headers.add("열림");
-        for (Map<String, Object> q : qHeaders) headers.add(String.valueOf(q.get("title")));
+        headers.addAll(questionTitles);
         sb.append(headers.stream().map(this::csvEsc).reduce((a, b) -> a + "," + b).orElse(""));
         sb.append('\n');
 
         for (Map<String, Object> row : rows) {
+            boolean unlocked = Boolean.TRUE.equals(row.get("unlocked"));
             @SuppressWarnings("unchecked")
             Map<String, String> answers = (Map<String, String>) row.getOrDefault("answers", Map.of());
             List<String> cells = new ArrayList<>();
             cells.add(String.valueOf(row.get("anonLabel")));
             cells.add(String.valueOf(row.get("qualityFlag")));
             cells.add(String.valueOf(row.get("submittedAt")));
-            cells.add(Boolean.TRUE.equals(row.get("unlocked")) ? "Y" : "N");
+            cells.add(unlocked ? "Y" : "N");
             for (Map<String, Object> q : qHeaders) {
-                cells.add(answers.getOrDefault(String.valueOf(q.get("questionId")), ""));
+                if (!unlocked) {
+                    cells.add("");
+                } else {
+                    cells.add(answers.getOrDefault(String.valueOf(q.get("questionId")), ""));
+                }
             }
             sb.append(cells.stream().map(this::csvEsc).reduce((a, b) -> a + "," + b).orElse(""));
             sb.append('\n');
         }
-        return sb.toString();
+        return new CsvExport(sb.toString(), sanitizeFileBaseName(form.getTitle()));
+    }
+
+    /** 동일 제목이면 "제목", "제목 (2)", … */
+    private List<String> uniqueTitles(List<Map<String, Object>> qHeaders) {
+        Map<String, Integer> seen = new HashMap<>();
+        List<String> out = new ArrayList<>();
+        for (Map<String, Object> q : qHeaders) {
+            String raw = String.valueOf(q.get("title"));
+            if (raw == null || "null".equals(raw) || raw.isBlank()) raw = "문항";
+            int n = seen.merge(raw, 1, Integer::sum);
+            out.add(n == 1 ? raw : raw + " (" + n + ")");
+        }
+        return out;
+    }
+
+    static String sanitizeFileBaseName(String title) {
+        String t = title == null || title.isBlank() ? "pumasi-export" : title.trim();
+        t = t.replaceAll("[\\\\/:*?\"<>|\\r\\n]+", "_").replaceAll("\\s+", " ");
+        if (t.length() > 60) t = t.substring(0, 60).trim();
+        if (t.isBlank()) t = "pumasi-export";
+        return t;
     }
 
     private FormVO requireOwner(String formId, String userId) throws Exception {
